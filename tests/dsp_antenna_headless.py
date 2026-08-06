@@ -47,7 +47,7 @@ if __name__ == "__main__":
 
     plot_iq_timeseries(signal_lfm.time_vector, signal_lfm.iq, ax=ax[0])
     plot_iq_timeseries(signal_lfm.time_vector, y, ax=ax[1])
-    y = a.beamform(steering_doa=(25.0, 0.0))
+    y = a.beamform(steering_doa=(25.0, 0.0), alg="mvdr")
     plot_iq_timeseries(signal_lfm.time_vector, y, ax=ax[2])
 
     fig2, ax2 = plt.subplots(1,1)
