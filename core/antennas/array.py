@@ -73,6 +73,7 @@ class AntennaArray:
         self.set_patterns(element_pattern=element_pattern)
         self.X = None
         self.A = None
+        self.doas = None
         self.weights = np.ones((self.num_elements, 1), dtype=complex) / self.num_elements
         self.channel_noise = None
         self.channel_noise_var = 0
@@ -149,7 +150,7 @@ class AntennaArray:
         self.X_n = self.X + self.channel_noise
 
     def receive(self, signals: list, doas: list[tuple[float, float]], ktb_var: float = 0):
-
+        self.doas = doas
         A = self.mixing_matrix(doas)
         self.A = A
         if self.mixer is not None and hasattr(self.mixer, 'set_mixing_matrix') and hasattr(self.mixer, 'mix_signals'):

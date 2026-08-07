@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="SSH (sftp://schmid6@10.18.17.111:22/home/schmid6/miniconda3/envs/mlc/bin/python)" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="WSL (Ubuntu-24.04): (/home/user/.conda/envs/dsp/bin/python)" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.10 (dsp)" project-jdk-type="Python SDK" />
 </project>
