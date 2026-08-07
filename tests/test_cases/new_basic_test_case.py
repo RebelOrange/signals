@@ -1,5 +1,6 @@
 import numpy as np
 
+from core.antennas.array import ElementPatterns
 from core.antennas.classic.ULA import ULA
 from core.dsp.signal_new import Signal
 from core.dsp.mixer import Mixer
@@ -15,10 +16,10 @@ def test_case_0(tgt_type:str = "lfm",
                 ) -> tuple[list[Signal], list[Signal], ULA]:
     ## Simulation config
     # antenna
-    num_elements = 20
+    num_elements = 8
 
     # signal setup
-    JS = -20
+    JS = 30
     fs = 10e6
     total_samps = 5000
 
@@ -38,6 +39,9 @@ def test_case_0(tgt_type:str = "lfm",
     
     # class instantiation
     antenna = ULA(num_elements=num_elements)
+    patterns = ([ElementPatterns.taylor_subarray(num_sub_elements=20)]
+                + [ElementPatterns.delta_subarray(4)]*7)
+    antenna.set_patterns(patterns)
 
     ################# baseline signals: jammer + tgt signals
     t_grid = TimeGrid(sample_rate=fs,duration=1000e-6)
@@ -114,26 +118,51 @@ def test_case_0(tgt_type:str = "lfm",
 if __name__ == "__main__":
 
     import matplotlib.pyplot as plt
-    from mpl.antenna_plotter import plot_scan_response
-    from mpl.dsp.signal_plotter import plot_iq_timeseries, plot_event_window
+    from mpl.antenna_plotter import plot_scan_response, plot_element_scan_responses
+    from mpl.dsp.signal_plotter import plot_iq_timeseries, plot_event_window, plot_spectrogram
     import time
     import matplotlib
+    from core.dsp.algorithms.block_algorithms.block_processor import BlockProcessor
+    from core.dsp.algorithms.block_algorithms.providers.MVDR import MvdrConfig
+    from core.dsp.signal_analyzer.signal_analyzer import SignalAnalyzer
     matplotlib.use("Qt5Agg")
 
     start_time = time.time()
     input_sigs, rx_sigs, antenna = test_case_0(TIMEIT=True)
     stop_time = time.time()
-    print(f"\nTest case time: {stop_time - start_time}\n")
 
-    fig, ax = plt.subplots(2,1, constrained_layout=True)
-    start_time = time.time()
-    points, resp = antenna.scan_response()
-    stop_time = time.time()
-    print(f"\nScan response calculation time: {stop_time - start_time}\n")
-    plot_scan_response(resp=resp, az_points=points, ax=ax[0])
+    X = antenna.X_n
+    processor = BlockProcessor.from_config(config=MvdrConfig())
+    Y = processor.process_datamatrix(X, antenna.manifold_vector((0.0,0.0)), np.array([]))
+    sig = Signal(iq=Y, sample_rate=rx_sigs[0].sample_rate, label="beamformed Output")
 
-    sig = rx_sigs[0]
-    sig.save_to_csv(file_path="./test.csv")
+    print(f"output shape: {Y.shape}")
+    print(f" weight shape: {processor.W.shape}")
+    antenna.set_weights(processor.W)
+
+    fig, ax = plt.subplots()
+    x, y = antenna.scan_response()
+    plot_scan_response(y, x, ax=ax)
+    x, y = antenna.scan_response_weights()
+    plot_scan_response(y, x, ax=ax)
+
+    S, extent = SignalAnalyzer.STFT(np.squeeze(Y), rx_sigs[0].sample_rate)
+
+    fig, ax1 = plt.subplots()
+    plot_iq_timeseries(rx_sigs[0].time_vector, iq=np.squeeze(Y), ax=ax1)
+
+    fig, ax2 = plt.subplots()
+    plot_spectrogram(S=S, extent=extent, ax=ax2)
+
+    fig, ax3 = plt.subplots()
+    x, y = antenna.element_scan_responses()
+    plot_element_scan_responses(az_grid=x, element_powers=y, ax=ax3)
+
+
+    plt.show()
+
+
+    #sig.save_to_csv(file_path="./test.csv")
 
     if False:
         print(f"\n attempting to plot signal with {sig.num_samples} samples, "

@@ -2,19 +2,104 @@ from abc import ABC, abstractmethod
 import numpy as np
 from core.antennas.van_trees.array_math import *
 from scipy.constants import c
+import scipy.signal.windows as windows
+
+class ElementPatterns:
+    """Helper strategies for individual antenna element radiation patterns."""
+
+    @staticmethod
+    def omni():
+        """Omnidirectional pattern (1.0 gain in all directions)."""
+        return lambda az, el: 1.0
+
+    @staticmethod
+    def taylor_subarray(num_sub_elements: int = 20, sll_db: float = 30.0, d_over_lambda: float = 0.5):
+        """
+        Generates a callable spatial response function E(az, el) representing a
+        pre-beamformed subarray synthesized with a Taylor taper.
+        """
+        # Pre-calculate internal subarray geometry and Taylor weights
+        sub_weights = windows.taylor(num_sub_elements, nbar=4, sll=sll_db)
+        # Center the sub-element positions relative to the element's origin
+        sub_pos = (np.arange(num_sub_elements) - (num_sub_elements - 1) / 2.0) * d_over_lambda
+
+        def pattern(az: float, el: float) -> complex:
+            # Direction cosine u in azimuth (assuming horizontal subarray)
+            u = np.sin(np.radians(az)) * np.cos(np.radians(el))
+            # Internal Array Factor summation: sum(w_n * exp(j * 2 * pi * d_n * u))
+            af = np.sum(sub_weights * np.exp(1j * 2 * np.pi * sub_pos * u))
+            return af
+
+        return pattern
+
+    @staticmethod
+    def delta_subarray(num_sub_elements: int = 20, d_over_lambda: float = 0.5):
+        """
+        Generates a callable spatial response function E(az, el) representing a
+        monopulse Delta (difference) pattern with a null at broadside (az = 0).
+        """
+        sub_weights = np.ones(num_sub_elements, dtype=complex)
+        sub_weights[num_sub_elements // 2:] = -1.0  # 180-degree phase flip
+        sub_pos = (np.arange(num_sub_elements) - (num_sub_elements - 1) / 2.0) * d_over_lambda
+
+        def pattern(az: float, el: float) -> complex:
+            u = np.sin(np.radians(az)) * np.cos(np.radians(el))
+            af = np.sum(sub_weights * np.exp(1j * 2 * np.pi * sub_pos * u))
+            return af
+
+        return pattern
+
+    @staticmethod
+    def cosine(q: float = 1.0, azimuth_offset_deg: float = 0.0):
+        """
+        Cosine pattern centered at a specific azimuth direction.
+        gain = cos^q(az - offset) * cos^q(el)
+        """
+
+        def pattern(az: float, el: float):
+            rel_az = az - azimuth_offset_deg
+            if -90 <= rel_az <= 90 and -90 <= el <= 90:
+                az_rad, el_rad = np.radians(rel_az), np.radians(el)
+                return (np.cos(az_rad) ** q) * (np.cos(el_rad) ** q)
+            return 0.0
+
+        return pattern
 
 class AntennaArray:
-    def __init__(self, positions, wavelength=1.0, element_pattern=None, mixer = None):
+    def __init__(self, positions, wavelength=1.0, element_pattern=None, mixer=None):
         self.positions = positions
         self.wavelength = wavelength
-        self.element_pattern = element_pattern
         self.mixer = mixer
-
+        self.set_patterns(element_pattern=element_pattern)
         self.X = None
         self.A = None
-        self.weights = np.ones((self.num_elements, 1)) / self.num_elements
+        self.weights = np.ones((self.num_elements, 1), dtype=complex) / self.num_elements
         self.channel_noise = None
         self.channel_noise_var = 0
+
+    def set_patterns(self, element_pattern):
+        """
+        Sets or updates element patterns post-initialization.
+
+        Args:
+            element_pattern:
+                - None: Defaults all elements to Omnidirectional.
+                - Callable: Applies the same pattern function to ALL elements.
+                - List/Tuple of Callables: Applies individual patterns per element (length must equal N).
+        """
+        if element_pattern is None:
+            self.element_patterns = [ElementPatterns.omni()] * self.num_elements
+        elif callable(element_pattern):
+            self.element_patterns = [element_pattern] * self.num_elements
+        elif isinstance(element_pattern, (list, tuple)):
+            if len(element_pattern) != self.num_elements:
+                raise ValueError(
+                    f"Length of element_pattern list ({len(element_pattern)}) "
+                    f"must match number of array elements ({self.num_elements})."
+                )
+            self.element_patterns = list(element_pattern)
+        else:
+            raise TypeError("element_pattern must be None, a callable, or a list of callables.")
 
     @property
     def num_elements(self):
@@ -24,11 +109,24 @@ class AntennaArray:
         self.ktb_var = ktb_var
 
     def manifold_vector(self, doa):
-        return manifold_vector_doa(
+        """
+        Calculates steering vector for a given DOA tuple (az, el).
+        Evaluates each element's individual gain response at (az, el).
+        """
+        # 1. Spatial phase propagation across array positions (N, 1)
+        v = manifold_vector_doa(
             az=doa[0], el=doa[1],
             positions=self.positions,
             wavelength=self.wavelength
-        )
+        ).reshape(-1, 1)
+
+        # 2. Evaluate each element's unique pattern response at this (az, el)
+        gains = np.array([
+            [pattern(doa[0], doa[1])] for pattern in self.element_patterns
+        ], dtype=complex)
+
+        # 3. Element-wise product of spatial phase and individual element gains
+        return v * gains
 
     def mixing_matrix(self, doas):
         return np.column_stack([
@@ -126,10 +224,66 @@ class AntennaArray:
     def scan_response(self):
         return scan_response_datamatrix(X=self.X, positions=self.positions, wavelength=self.wavelength)
 
-    def scan_response_weights(self, weights=None):
+    def scan_response_weights(self, weights=None, angle_resolution: float = 0.5, normalize: bool = True):
         w = self.weights if weights is None else weights
-        return scan_response_weights(
-            w=w,
-            positions=self.positions,
-            wavelength=self.wavelength,
-        )
+        scan_angles = np.arange(-90, 90, angle_resolution)
+        scan_powers = np.zeros(len(scan_angles))
+
+        for idx, phi in enumerate(scan_angles):
+            # 1. Use self.manifold_vector to include custom per-element patterns
+            v = self.manifold_vector((phi, 0.0))
+
+            # 2. Compute Array Factor output magnitude |w^H * v|
+            scan_power = np.abs(w.conj().T @ v).squeeze()
+            scan_powers[idx] = scan_power
+
+        # 3. Prevent log10(0) warnings
+        eps = 1e-12
+        if normalize and np.max(scan_powers) > 0:
+            scan_powers = scan_powers / np.max(scan_powers)
+
+        return scan_angles, 20 * np.log10(scan_powers + eps)
+
+    def element_scan_responses(self, az_grid=None, el: float = 0.0, db: bool = True):
+        """
+        Calculates the scan response (power vs azimuth) for each individual element
+        in the array based on the received data matrix X.
+
+        Args:
+            az_grid: 1D array of azimuth angles in degrees (default: -90 to +90 in 1 deg steps).
+            el: Elevation angle in degrees (default: 0.0).
+            db: If True, returns normalized power in dB. If False, returns linear power.
+
+        Returns:
+            az_grid: 1D array of scan angles (shape: num_angles,).
+            element_powers: 2D array of individual element power responses (shape: num_elements, num_angles).
+        """
+        if self.X_n is None:
+            raise ValueError("No received data. Call receive() first.")
+
+        if az_grid is None:
+            az_grid = np.linspace(-90, 90, 722)
+
+        num_angles = len(az_grid)
+        element_powers = np.zeros((self.num_elements, num_angles))
+
+        # Evaluate individual element responses across scan angles
+        for i, az in enumerate(az_grid):
+            # Manifold vector a(az, el) of shape (N, 1) incorporating individual element patterns
+            a = self.manifold_vector((az, el))
+
+            # Element-wise response: y_m(t) = conj(a_m) * X_m(t) -> shape (N, num_samples)
+            y_element = a.conj() * self.X_n
+
+            # Mean power for each element at this scan angle
+            element_powers[:, i] = np.mean(np.abs(y_element) ** 2, axis=1)
+
+        if db:
+            eps = 1e-12
+            max_val = np.max(element_powers)
+            if max_val > 0:
+                element_powers = 10 * np.log10(element_powers / max_val + eps)
+            else:
+                element_powers = 10 * np.log10(element_powers + eps)
+
+        return az_grid, element_powers

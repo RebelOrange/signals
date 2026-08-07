@@ -29,5 +29,19 @@ def plot_scan_response(resp: np.ndarray, az_points: np.ndarray, ax:Axes, axis_co
         axis_config = AxisConfig(title="Scan Response", xlabel="Azimuth [deg]", ylabel="Response [dB]", grid=True)
     return apply_axis_config(ax, axis_config)
 
+def plot_element_scan_responses(az_grid, element_powers, el: float = 0.0, ax=None, db: bool = True):
+
+    M, _ = element_powers.shape
+
+    for m in range(M):
+        ax.plot(az_grid, element_powers[m, :], label=f"Element {m}")
+
+    ax.set_xlabel("Azimuth (deg)")
+    ax.set_ylabel("Power (dB)" if db else "Power (Linear)")
+    ax.set_title("Individual Element Scan Responses")
+    ax.grid(True, linestyle="--", alpha=0.6)
+    ax.legend()
+
+    return ax
 
 
