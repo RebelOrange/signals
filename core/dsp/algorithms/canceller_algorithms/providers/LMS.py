@@ -20,7 +20,9 @@ class nlms:
     d: np.array
     mu: float = 0.01
     order: int = 3
+    gamma: float = 0
     eps: float = np.finfo(float).eps
+
 
     def run(self):
         M, L = np.shape(self.X) # number of channels, length of signal vector
@@ -46,8 +48,8 @@ class nlms:
             e[i] = self.d[i]-y[i]
 
             # step weights
-            mu_norm = self.mu/(np.vdot(x_fifo, x_fifo)+self.eps)
-            w +=  mu_norm * e[i].conj()* x_fifo
+            mu_norm = self.mu/(np.vdot(x_fifo, x_fifo).real+self.eps)
+            w = (1.0-mu_norm*self.gamma)*w +mu_norm * e[i].conj()* x_fifo
             if i == L-1:
                 break
             W[:, i+1] = w

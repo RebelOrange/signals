@@ -64,13 +64,16 @@ def test_case_0(tgt_type: str = "lfm",
     # generate 7 random jammer configs
     confs = []
     jam_sigs = []
+    jam_vars = []
     for i in range(7):
         noise_bw = random.uniform(0.05*fs, 0.75*fs)
         freq_center = random.uniform(-0.1*fs, 0.1*fs)
-        jam_SNR = random.uniform(-3, 30)+30
+        jam_SNR = random.uniform(-3, 30)+10
         jam_var = 10 ** (jam_SNR/ 10) * sig_amp
-        start_time = random.uniform(0e-6, 200e-6)
-        stop_time = random.uniform(800e-6, 900e-6)
+        jam_vars.append(jam_var)
+        start_time = random.uniform(0e-6, 0e-6)
+        stop_time = random.uniform(1000e-6, 1000e-6)
+
         conf = PulsedSignalConfig(waveform_config=NoiseConfig(bandwidth=noise_bw,
                                                               frequency_center=freq_center,
                                                               variance=jam_var),
@@ -78,6 +81,11 @@ def test_case_0(tgt_type: str = "lfm",
         confs.append(conf)
         jam_sigs.append(sigGen.create_pulsed_signal([conf],label=f"Jammer {i}"))
     print(f"number of confs: {len(confs)}")
+    print(f"Min Jam Variance: {np.min(jam_vars)*0.001} ({10*np.log10(np.min(jam_vars))-30})")
+    print(f"Max Jam Variance: {np.max(jam_vars)*0.001} ({10*np.log10(np.max(jam_vars))-30})")
+    print(f"kTB variance: {ktb_var} ({10*np.log10(ktb_var)})")
+
+
     input_sigs = sigs + jam_sigs
 
     if TIMEIT:
@@ -125,6 +133,58 @@ def test_case_0(tgt_type: str = "lfm",
 
     return input_sigs, rx_sigs, antenna
 
+def compute_simulation_gamma(
+    M: int,
+    K: int,
+    var_jam_min: float,
+    var_jam_max: float,
+    var_noise: float,
+    target_residual: str = "noise_floor",  # 'noise_floor' or 'db_suppression'
+    suppression_db: float = 30.0,
+    dtype=np.float32,
+) -> float:
+    """Calculates optimal gamma for Leaky NLMS/LMS in floating-point simulation.
+
+    Parameters:
+    - M: Number of auxiliary channels
+    - K: Number of FIR delay taps
+    - var_jam_min: Variance (power) of weakest jammer
+    - var_jam_max: Variance (power) of strongest jammer
+    - var_noise: Variance of thermal noise floor
+    - target_residual: 'noise_floor' or 'db_suppression'
+    - suppression_db: Target suppression in dB (if target_residual='db_suppression')
+    - dtype: np.float32 or np.float64
+    """
+    N = M * K
+    lambda_min = N * var_jam_min + var_noise
+    lambda_max = N * var_jam_max + var_noise
+
+    # Machine precision epsilon
+    eps_mach = np.finfo(dtype).eps
+
+    # 1. Calculate Theoretical Gamma
+    if target_residual == "noise_floor":
+        P_res = var_noise
+        if var_jam_min <= var_noise:
+            # Jammer is already at/below noise floor
+            gamma_theory = lambda_min
+        else:
+            A = np.sqrt(P_res) / np.sqrt(var_jam_min)
+            gamma_theory = (A / (1.0 - A)) * lambda_min
+    elif target_residual == "db_suppression":
+        A = 10.0 ** (-abs(suppression_db) / 20.0)
+        gamma_theory = (A / (1.0 - A)) * lambda_min
+    else:
+        raise ValueError("Invalid target_residual option.")
+
+    # 2. Enforce Numerical Floating-Point Bounds
+    gamma_floor = eps_mach * lambda_max * 10.0  # 10x safety margin above eps
+    gamma_ceiling = 0.5 * lambda_min  # Keep well below lambda_min
+
+    # Clamp gamma within valid numerical range
+    gamma_sim = np.clip(gamma_theory, gamma_floor, gamma_ceiling)
+
+    return float(gamma_sim)
 
 if __name__ == "__main__":
 
@@ -137,6 +197,7 @@ if __name__ == "__main__":
     from core.dsp.algorithms.block_algorithms.providers.MVDR import MvdrConfig
     from core.dsp.signal_analyzer.signal_analyzer import SignalAnalyzer
     from core.dsp.algorithms.canceller_algorithms.providers.LMS import nlms
+    from core.dsp.algorithms.canceller_algorithms.providers.Wiener import Wiener
 
     matplotlib.use("Qt5Agg")
 
@@ -147,7 +208,33 @@ if __name__ == "__main__":
     doas = antenna.doas
 
     X = antenna.X_n
-    lms = nlms(X=X[1:,:], d=X[0,:], mu=0.1, order=3)
+
+    # Extract dynamic power parameters from antenna and generated signals
+    M_aux = X.shape[0] - 1  # 7 auxiliary channels
+    K_taps = 2  # FIR order
+    var_noise = antenna.ktb_var  # Thermal noise floor
+
+    # Estimate actual jammer power bounds from signal matrices
+    X_aux = X[1:, :]
+    ch_powers = np.mean(np.abs(X_aux) ** 2, axis=1)
+    var_jam_min = np.min(ch_powers)
+    var_jam_max = np.max(ch_powers)
+
+    # Calculate optimal simulation gamma using dynamic signal parameters
+    gamma = compute_simulation_gamma(
+        M=M_aux,
+        K=K_taps,
+        var_jam_min=var_jam_min,
+        var_jam_max=var_jam_max,
+        var_noise=var_noise,
+        target_residual="noise_floor",
+        dtype=np.float64,
+    )
+
+    print(f"Calculated Leaky LMS gamma: {gamma:.4e}")
+
+    lms = nlms(X=X[1:,:], d=X[0,:], mu=1.0, order=K_taps, gamma=gamma)
+    wien = Wiener(X=X[1:,:], d=X[0,:], order=3)
     main_resp, _, _ = lms.run()
 
 
