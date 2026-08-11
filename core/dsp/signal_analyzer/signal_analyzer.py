@@ -42,6 +42,17 @@ class SignalAnalyzer:
         return xcorr[start:end], lags
 
     @staticmethod
+    def eigenvalue_decomp(x:np.ndarray):
+        R = x@x.conj().T / len(x)
+        eigenvalues, eigenvectors = np.linalg.eig(R)
+        idx = eigenvalues.argsort()[::-1]
+        eigenvalues_sort = eigenvalues[idx]
+        eigenvectors_sort = eigenvectors[:,idx]
+        return eigenvalues_sort, eigenvectors_sort
+
+
+
+    @staticmethod
     def matched_filter(x:np.ndarray, template:np.ndarray):
         mf = np.correlate(x, template, mode='same')
         mf /= len(mf)

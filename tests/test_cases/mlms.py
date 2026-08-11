@@ -28,7 +28,7 @@ def test_case_0(tgt_type: str = "lfm",
 
     tgt_type = tgt_type.lower()
     tgt_doa = (tgt_az, 0.0)  # degrees
-    tgt_bw = 0.2 * fs  # for lfm
+    tgt_bw = 0.05 * fs  # for lfm
     tgt_start_samp = 1000
     tgt_min_num_samps = 2000
     SNR = 10
@@ -60,15 +60,17 @@ def test_case_0(tgt_type: str = "lfm",
     sigs = []
     sigGen = SignalGenerator(time_grid=t_grid)
     tgt_sig = sigGen.create_pulsed_signal([tgt_sig_config], label="Pulsed LFM")
-    sigs.append(tgt_sig)
+    #sigs.append(tgt_sig)
+    doas = []
+    #doas.append(tgt_doa)
     # generate 7 random jammer configs
     confs = []
     jam_sigs = []
     jam_vars = []
     for i in range(7):
-        noise_bw = random.uniform(0.05*fs, 0.75*fs)
+        noise_bw = random.uniform(0.25*fs, 0.89*fs)
         freq_center = random.uniform(-0.1*fs, 0.1*fs)
-        jam_SNR = random.uniform(-3, 30)+10
+        jam_SNR = random.uniform(-3, 30)+30
         jam_var = 10 ** (jam_SNR/ 10) * sig_amp
         jam_vars.append(jam_var)
         start_time = random.uniform(0e-6, 0e-6)
@@ -101,8 +103,7 @@ def test_case_0(tgt_type: str = "lfm",
 
     ################ recieve signals with DOAs ################
     # X = antenna.receive([tgt_sig.iq, jam_sig.iq], [tgt_doa, jam_doa]) # data matrix method
-    doas = []
-    doas.append(tgt_doa)
+
 
     def random_exclusive_float(range1, range2):
         """
