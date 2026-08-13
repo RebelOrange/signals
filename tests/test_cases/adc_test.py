@@ -52,6 +52,41 @@ jam_bw_range:list[float] = [0.5, 0.5],
     adc_sigs = adc.process(rx_sigs, ktb_var=antenna.ktb_var)
 
     return input_sigs, adc_sigs, antenna, adc
+
+
+def calculate_leaky_gamma(
+        noise_bits: float,
+        jnr_min_db: float,
+        margin_db: float = 10.0,
+        full_scale_bits: int = None
+) -> float:
+    """
+    Calculates the Leaky LMS gamma parameter based on ADC noise floor and min JNR.
+
+    Args:
+        noise_bits: Number of LSB bits occupied by the ADC noise floor (X bits).
+        jnr_min_db: Minimum JNR (in dB) that the algorithm should cancel.
+        margin_db: Safety margin in dB below min jammer power (default: 10 dB).
+        full_scale_bits: Total ADC bits if working with normalized float [-1, 1]. None for LSB counts.
+
+    Returns:
+        gamma: Linear leakage factor for Leaky LMS.
+    """
+    # Noise floor power in LSB^2
+    sigma_n_sq = 2.0 ** (2.0 * noise_bits)
+
+    # If using normalized IQ data in range [-1.0, 1.0]
+    if full_scale_bits is not None:
+        full_scale_power = (2.0 ** (full_scale_bits - 1)) ** 2
+        sigma_n_sq = sigma_n_sq / full_scale_power
+
+    # Calculate gamma sitting 'margin_db' below the minimum jammer power
+    gamma_db = 10.0 * np.log10(sigma_n_sq) + jnr_min_db - margin_db
+    gamma = 10.0 ** (gamma_db / 10.0)
+
+    # Ensure gamma doesn't drop below the actual noise floor
+    return max(gamma, sigma_n_sq)
+
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
     from mpl.antenna_plotter import plot_scan_response, plot_element_scan_responses
