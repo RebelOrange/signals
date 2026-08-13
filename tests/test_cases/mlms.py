@@ -12,12 +12,35 @@ from core.dsp.signal_generators.signal_providers.FM import LFMConfig
 from core.dsp.signal_generators.signal_providers.Noise import NoiseConfig
 
 
+def random_exclusive_float(range1, range2):
+    """
+    Generates a uniform float from either range1 [min, max] or range2 [min, max].
+    Accounts for range widths to maintain true uniform probability.
+    """
+    # 1. Calculate the span/width of each valid window
+    width1 = range1[1] - range1[0]
+    width2 = range2[1] - range2[0]
+    total_width = width1 + width2
+
+    # 2. Pick a range based on its proportional size (weight)
+    chosen_range = random.choices([range1, range2], weights=[width1, width2])[0]
+
+    # 3. Sample uniformly from the selected range
+    return random.uniform(chosen_range[0], chosen_range[1])
+
 def multiple_jammer_case_0(tgt_type: str = "lfm",
                            tgt_on: bool = True,
+                           tgt_SNR: float = 3,
                            num_jammers:int = 3,
                            num_antenna_elements: int = 8,
                            jam_SNRs: list[float] = None,
                            jam_doas: list[float] = None,
+                           sidelobe_gain_offset:int=0,
+                           sidelobe_gain_normalization:bool=True,
+                           bw_range_jammer: list[float] = [0.5, 0.5],
+                           min_gate_range_jammer: list[float] = [0.0, 0.0],
+                           max_gate_range_jammer: list[float] = [1.0, 1.0],
+                           disconnected_elements:list[int] = [],
                            TIMEIT: bool = False,
                            ) -> tuple[list[Signal], list[Signal], ULA]:
     ## Simulation config
@@ -36,18 +59,22 @@ def multiple_jammer_case_0(tgt_type: str = "lfm",
     tgt_min_num_samps = 2000
     SNR = 10
     sig_amp = 1
-    ktb_var = sig_amp / 10
+    ktb_var = sig_amp / 10**(tgt_SNR/10)
 
     #jam_doa = (jam_az, 0.0)  # degrees
     noise_bw = 0.5 * fs
     noise_start_samp = 500
     noise_min_num_samps = 3000
+    ssl_taylor = 20
 
     # class instantiation
     antenna = ULA(num_elements=num_elements)
-    patterns = ([ElementPatterns.taylor_subarray(num_sub_elements=20)]
-                + [ElementPatterns.delta_subarray(4)] * (num_antenna_elements-1))
+    patterns = ([ElementPatterns.taylor_subarray(num_sub_elements=20, sll_db=ssl_taylor)]
+                + [ElementPatterns.delta_subarray(4, gain_offset=(-ssl_taylor+3))] * (num_antenna_elements-1))
+    antenna.set_disconnected_elements(disconnected_elements)
     antenna.set_patterns(patterns)
+
+    main_pattern = antenna.element_patterns[0]
 
     ################# baseline signals: jammer + tgt signals
     t_grid = TimeGrid(sample_rate=fs, duration=1000e-6)
@@ -68,22 +95,30 @@ def multiple_jammer_case_0(tgt_type: str = "lfm",
     if tgt_on:
         sigs.append(tgt_sig)
         doas.append(tgt_doa)
+    for i in range(num_jammers):
+        az = random_exclusive_float([-65, -10], [10, 65])
+        if jam_doas is None:
+            doas.append((az, 0.0))
+        else:
+            doas.append((jam_doas[i],0.0))
 
     # generate 7 random jammer configs
     confs = []
     jam_sigs = []
     jam_vars = []
     for i in range(num_jammers):
-        noise_bw = random.uniform(0.89*fs, 0.89*fs)
+        noise_bw = random.uniform(bw_range_jammer[0]*fs, bw_range_jammer[1]*fs)
         freq_center = random.uniform(-0.0*fs, 0.0*fs)
+        sidelobe_gain = np.abs(main_pattern(jam_doas[i],0.0))**2
+        print(f"using sidelobe gain {10*np.log10(1/sidelobe_gain)} at f{jam_doas[i]} az")
         if jam_SNRs is None:
-            jam_SNR = random.uniform(-3, 30)+30
+            jam_SNR = random.uniform(-3, 30)+sidelobe_gain_offset+10*np.log10(1/sidelobe_gain)
         else:
-            jam_SNR = jam_SNRs[i] + 30
+            jam_SNR = jam_SNRs[i] +sidelobe_gain_offset+10*np.log10(1/sidelobe_gain)
         jam_var = 10 ** (jam_SNR/ 10) * sig_amp
         jam_vars.append(jam_var)
-        start_time = random.uniform(0e-6, 0e-6)
-        stop_time = random.uniform(1000e-6, 1000e-6)
+        start_time = random.uniform(min_gate_range_jammer[0]*t_grid.duration, min_gate_range_jammer[1]*t_grid.duration)
+        stop_time = random.uniform(max_gate_range_jammer[0]*t_grid.duration, max_gate_range_jammer[1]*t_grid.duration)
 
         conf = PulsedSignalConfig(waveform_config=NoiseConfig(bandwidth=noise_bw,
                                                               frequency_center=freq_center,
@@ -114,28 +149,8 @@ def multiple_jammer_case_0(tgt_type: str = "lfm",
     # X = antenna.receive([tgt_sig.iq, jam_sig.iq], [tgt_doa, jam_doa]) # data matrix method
 
 
-    def random_exclusive_float(range1, range2):
-        """
-        Generates a uniform float from either range1 [min, max] or range2 [min, max].
-        Accounts for range widths to maintain true uniform probability.
-        """
-        # 1. Calculate the span/width of each valid window
-        width1 = range1[1] - range1[0]
-        width2 = range2[1] - range2[0]
-        total_width = width1 + width2
 
-        # 2. Pick a range based on its proportional size (weight)
-        chosen_range = random.choices([range1, range2], weights=[width1, width2])[0]
 
-        # 3. Sample uniformly from the selected range
-        return random.uniform(chosen_range[0], chosen_range[1])
-
-    for i in range(num_jammers):
-        az = random_exclusive_float([-65, -10], [10, 65])
-        if jam_doas is None:
-            doas.append((az, 0.0))
-        else:
-            doas.append((jam_doas[i],0.0))
     if TIMEIT:
         start_time = time.time()
     rx_sigs: list[Signal] = antenna.receive(input_sigs, doas, ktb_var=ktb_var)
@@ -283,9 +298,10 @@ if __name__ == "__main__":
             ax.plot([doas[i][0], doas[i][0]],lims, "--r")
 
 
-    fig, ax1 = plt.subplots(2,1)
-    plot_iq_timeseries(rx_sigs[0].time_vector, iq=np.squeeze(Y), ax=ax1[0])
-    plot_iq_timeseries(rx_sigs[0].time_vector, iq=main_resp, ax=ax1[1])
+    fig, ax1 = plt.subplots(3,1)
+    plot_iq_timeseries(rx_sigs[0].time_vector, iq = np.squeeze(rx_sigs[0].iq), ax=ax1[0])
+    plot_iq_timeseries(rx_sigs[0].time_vector, iq=np.squeeze(Y), ax=ax1[1])
+    plot_iq_timeseries(rx_sigs[0].time_vector, iq=main_resp, ax=ax1[2])
 
 
 
@@ -295,7 +311,7 @@ if __name__ == "__main__":
     x, y = antenna.element_scan_responses()
     plot_element_scan_responses(az_grid=x, element_powers=y, ax=ax3)
     lims = [-50, 20]
-    ax3.set_ylim((lims[0], lims[1]))
+    #ax3.set_ylim((lims[0], lims[1]))
     print(len(doas))
     for i in range(num_jammers+1):
         if i ==0:
@@ -305,21 +321,21 @@ if __name__ == "__main__":
 
 
     # beam former
-    S, extent = SignalAnalyzer.STFT(np.squeeze(Y), rx_sigs[0].sample_rate)
-    fig, ax2 = plt.subplots()
-    plot_spectrogram(S=S, extent=extent, ax=ax2)
-    # LMS
-    S_n, extent_n = SignalAnalyzer.STFT(np.squeeze(main_resp), rx_sigs[0].sample_rate)
-    fig, ax8 = plt.subplots()
-    plot_spectrogram(S=S_n, extent=extent_n, ax=ax8)
-    # original
-    S_n, extent_n = SignalAnalyzer.STFT(np.squeeze(X[0, :]), rx_sigs[0].sample_rate)
-    fig, ax9 = plt.subplots()
-    plot_spectrogram(S=S_n, extent=extent_n, ax=ax9)
-    # sig.save_to_csv(file_path="./test.csv")
-
     plt.show()
     if False:
+        S, extent = SignalAnalyzer.STFT(np.squeeze(Y), rx_sigs[0].sample_rate)
+        fig, ax2 = plt.subplots()
+        plot_spectrogram(S=S, extent=extent, ax=ax2)
+        # LMS
+        S_n, extent_n = SignalAnalyzer.STFT(np.squeeze(main_resp), rx_sigs[0].sample_rate)
+        fig, ax8 = plt.subplots()
+        plot_spectrogram(S=S_n, extent=extent_n, ax=ax8)
+        # original
+        S_n, extent_n = SignalAnalyzer.STFT(np.squeeze(X[0, :]), rx_sigs[0].sample_rate)
+        fig, ax9 = plt.subplots()
+        plot_spectrogram(S=S_n, extent=extent_n, ax=ax9)
+        # sig.save_to_csv(file_path="./test.csv")
+
         print(f"\n attempting to plot signal with {sig.num_samples} samples, "
               f"samplerate: {sig.sample_rate},"
               f" duration: {sig.duration}\n,"

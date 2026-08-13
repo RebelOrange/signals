@@ -13,39 +13,70 @@ class ElementPatterns:
         return lambda az, el: 1.0
 
     @staticmethod
-    def taylor_subarray(num_sub_elements: int = 20, sll_db: float = 30.0, d_over_lambda: float = 0.5):
+    def taylor_subarray(
+            num_sub_elements: int = 20,
+            sll_db: float = 30.0,
+            d_over_lambda: float = 0.5,
+            normalize: bool = True,
+            gain_offset: float = 0.0,
+    ):
+        """Generates a Taylor subarray pattern.
+
+        If normalize=True, peak mainbeam gain is scaled to 1.0 (0 dB).
         """
-        Generates a callable spatial response function E(az, el) representing a
-        pre-beamformed subarray synthesized with a Taylor taper.
-        """
-        # Pre-calculate internal subarray geometry and Taylor weights
         sub_weights = windows.taylor(num_sub_elements, nbar=4, sll=sll_db)
-        # Center the sub-element positions relative to the element's origin
-        sub_pos = (np.arange(num_sub_elements) - (num_sub_elements - 1) / 2.0) * d_over_lambda
+        sub_pos = (
+                          np.arange(num_sub_elements) - (num_sub_elements - 1) / 2.0
+                  ) * d_over_lambda
+
+        # Peak gain of Taylor subarray occurs at broadside (sum of weights)
+        peak_gain = np.sum(sub_weights) if normalize else 1.0
+
+        peak_gain = peak_gain/(10**(gain_offset/20.0))
 
         def pattern(az: float, el: float) -> complex:
-            # Direction cosine u in azimuth (assuming horizontal subarray)
             u = np.sin(np.radians(az)) * np.cos(np.radians(el))
-            # Internal Array Factor summation: sum(w_n * exp(j * 2 * pi * d_n * u))
             af = np.sum(sub_weights * np.exp(1j * 2 * np.pi * sub_pos * u))
-            return af
+            return af / peak_gain
 
         return pattern
 
     @staticmethod
-    def delta_subarray(num_sub_elements: int = 20, d_over_lambda: float = 0.5):
-        """
-        Generates a callable spatial response function E(az, el) representing a
-        monopulse Delta (difference) pattern with a null at broadside (az = 0).
+    def delta_subarray(
+            num_sub_elements: int = 20,
+            d_over_lambda: float = 0.5,
+            normalize: bool = True,
+            gain_offset: float = 0.0,
+    ):
+        """Generates a monopulse Delta subarray pattern.
+
+        If normalize=True, peak lobe gain is scaled to 1.0 (0 dB).
         """
         sub_weights = np.ones(num_sub_elements, dtype=complex)
-        sub_weights[num_sub_elements // 2:] = -1.0  # 180-degree phase flip
-        sub_pos = (np.arange(num_sub_elements) - (num_sub_elements - 1) / 2.0) * d_over_lambda
+        sub_weights[num_sub_elements // 2:] = -1.0  # Phase flip
+        sub_pos = (
+                          np.arange(num_sub_elements) - (num_sub_elements - 1) / 2.0
+                  ) * d_over_lambda
 
+        # Find peak gain across spatial domain for Delta pattern
+        if normalize:
+            u_grid = np.sin(np.radians(np.linspace(-90, 90, 1000)))
+            peak_gain = np.max(
+                [
+                    np.abs(
+                        np.sum(sub_weights * np.exp(1j * 2 * np.pi * sub_pos * u))
+                    )
+                    for u in u_grid
+                ]
+            )
+        else:
+            peak_gain = 1.0
+
+        peak_gain = peak_gain/(10**(gain_offset/20.0))
         def pattern(az: float, el: float) -> complex:
             u = np.sin(np.radians(az)) * np.cos(np.radians(el))
             af = np.sum(sub_weights * np.exp(1j * 2 * np.pi * sub_pos * u))
-            return af
+            return af / peak_gain
 
         return pattern
 
@@ -102,6 +133,18 @@ class AntennaArray:
         else:
             raise TypeError("element_pattern must be None, a callable, or a list of callables.")
 
+    def set_disconnected_elements(self, indices: list[int] | set[int]) -> None:
+        """Disconnects specified antenna elements by index.
+
+        Disconnected elements receive 0 RF signal power from the environment,
+        simulating a 50-ohm load termination, but still generate kTB thermal noise.
+        """
+        # Validate indices
+        valid_indices = {
+            i for i in indices if 0 <= i < self.num_elements
+        }
+        self.disconnected_elements = valid_indices
+
     @property
     def num_elements(self):
         return self.positions.shape[1]
@@ -130,9 +173,14 @@ class AntennaArray:
         return v * gains
 
     def mixing_matrix(self, doas):
-        return np.column_stack([
-            self.manifold_vector(doa) for doa in doas
-        ])
+        A = np.column_stack([self.manifold_vector(doa) for doa in doas])
+
+        # Zero out rows for disconnected elements across all DOAs
+        if hasattr(self, "disconnected_elements") and self.disconnected_elements:
+            for ch_idx in self.disconnected_elements:
+                A[ch_idx, :] = 0.0
+
+        return A
 
     def signals_matrix(self, signals_list: list[np.ndarray]):
         return np.vstack(signals_list)
@@ -145,7 +193,7 @@ class AntennaArray:
         print(ktb_var)
         M, L = self.X.shape
         for m in range(M):
-            self.channel_noise[m, :] = np.sqrt(ktb_var) * (np.random.normal(0, 1, L) + 1j * np.random.normal(0, 1, L))
+            self.channel_noise[m, :] = np.sqrt(ktb_var/2) * (np.random.normal(0, 1, L) + 1j * np.random.normal(0, 1, L))
 
         self.X_n = self.X + self.channel_noise
 

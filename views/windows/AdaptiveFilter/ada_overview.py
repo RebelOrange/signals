@@ -140,14 +140,19 @@ class ada_overview(QWidget):
         ax.set_ylabel("Power (dB)")
         ax.set_xlabel("Index")
 
-    def _update_final_weights(self, w_opt, w_alg):
+    def _update_final_weights(self, w_opt, w_alg,
+                                    event_start: int = None,
+                                    event_end:int = None):
         ax = self.w_axes["final_weights"]
         ax.set_title("Final Weights")
         M, L = np.shape(w_alg) # M channels, L samples
-        x = np.ones((1,L))
+        if event_start is None:
+            event_start=0
+            event_end=L
+        x = np.ones((1,event_end-event_start))
         for m in range(M):
             ax.plot(m, np.abs(w_opt[m]), "o",label="Optimal", mfc="b")
-            ax.plot(np.squeeze(x*m), np.abs(w_alg[m,:]), ".",label="Algorithm", mfc="r", alpha=0.1)
+            ax.plot(np.squeeze(x*m), np.abs(w_alg[m,event_start:event_end]), ".",label="Algorithm", mfc="r", alpha=0.1)
         ax.grid(True)
         ax.set_ylabel("Amplitude")
         ax.set_xlabel("Aux Antenna Element")
@@ -160,9 +165,12 @@ class ada_overview(QWidget):
         if w_opt is None:
             return
         M, L = np.shape(w_alg) # M channels, L samples
+        if event_start is None:
+            event_start=0
+            event_end=L
         ax = self.w_axes["weight_plane"]
         for m in range(M):
-            w = np.squeeze(w_alg[m,:])
+            w = np.squeeze(w_alg[m,event_start:event_end])
             l, = ax.plot(w.real, w.imag, ".", label=f"W_alg {m}", alpha=0.2)
             color = l.get_color()
             w = np.squeeze(w_opt[m])
@@ -227,10 +235,12 @@ class ada_overview(QWidget):
                         t=t,
                         noise_floor=noise_floor,
                         event_start=event_start, event_end=event_end)
-        self._update_weight_constelation(w_opt=opt_weights, w_alg=alg_weights)
+        self._update_weight_constelation(w_opt=opt_weights, w_alg=alg_weights,
+                                    event_start=event_start, event_end=event_end)
         if eig_val is not None:
             self._update_scree_plot(eig_val)
-        self._update_final_weights(w_opt=opt_weights, w_alg=alg_weights)
+        self._update_final_weights(w_opt=opt_weights, w_alg=alg_weights,
+                                   event_start=event_start, event_end=event_end)
 
         self._draw_plots()
 
@@ -240,7 +250,7 @@ class ada_overview(QWidget):
 
 if __name__ == "__main__":
 
-    from tests.test_cases.mlms import multiple_jammer_case_0
+    from tests.test_cases.adc_test import multiple_jammer_case_with_adc
     from itertools import chain
     from core.dsp.signal_new import Signal
     from core.dsp.signal_analyzer.signal_analyzer import SignalAnalyzer
@@ -250,11 +260,22 @@ if __name__ == "__main__":
 
     jam_SNRs = [20, 22, 24, 20, 20, 20]
     jam_SNRs = None
-    jam_SNRs = [30, 10, 5, 0, -3]
-    input_sigs, mixed_sigs, antenna = multiple_jammer_case_0(tgt_on=True,
-                                                             num_jammers=3,
-                                                             num_antenna_elements=8,
-                                                             jam_SNRs=jam_SNRs)
+    jam_SNRs = [30, 10, 5, 0, 3, 8, 1]
+    #jam_SNRs = [40, 0, 5, 0, 3, 8, 1]
+    disconnected_elements = [7,8]
+    input_sigs, mixed_sigs, antenna, adc = multiple_jammer_case_with_adc(tgt_on=True,
+                                                                    num_jammers=5,
+                                                                    num_antenna_elements=8,
+                                                                    jam_SNRs=jam_SNRs,
+                                                                    jam_bw_range = [0.5, 0.5],
+                                                                    doas=[15.0, -26.0, 33.0, -33.0, 25.0, 10.0, -15.0],
+                                                                    min_gate_range_jammer=[0.2,0.2],
+                                                                    max_gate_range_jammer=[0.8,0.8],
+                                                                     disconnected_elements=disconnected_elements)
+    #input_sigs, mixed_sigs, antenna = multiple_jammer_case_0(tgt_on=True,
+    #                                                         num_jammers=3,
+    #                                                         num_antenna_elements=8,
+    #                                                         jam_SNRs=jam_SNRs)
     sig = mixed_sigs[0] # signal for time vector and events
     event_names = []
     for idx, e in enumerate(mixed_sigs[0].events):
@@ -264,8 +285,8 @@ if __name__ == "__main__":
 
     ################### controller preprocessing steps? #################
     # extract canceller algorithm channels, and do some stats
-    X = antenna.X_n[1:,:]
-    d = antenna.X_n[0,:]
+    X = adc.X_dig[1:,:]
+    d = adc.X_dig[0,:]
 
     R_xx = X@X.conj().T
     print(f"Rank: {np.linalg.matrix_rank(R_xx)}")
@@ -273,7 +294,7 @@ if __name__ == "__main__":
     # Extract dynamic power parameters from antenna and generated signals
     M_aux = X.shape[0]  # 7 auxiliary channels
     K_taps = 1  # FIR order
-    ktb_var = antenna.ktb_var  # Thermal noise floor
+    ktb_var = 10**(adc.ktb_db_int16/10)  # Thermal noise floor
 
     # Estimate actual jammer power bounds from signal matrices
     X_aux = X
@@ -301,7 +322,7 @@ if __name__ == "__main__":
         plot_opt = wien_iq
         plot_alg = lms_iq
         t = sig.t
-        ktb_var = antenna.ktb_var
+        ktb_var = 10**(adc.ktb_db_int16/10)
         if event_id is None:
             event_id = 0
         elif event_id == -1:
@@ -322,16 +343,21 @@ if __name__ == "__main__":
 
         # handle power plot checkbox
         if power_bool:
-            ktb_var = 10*np.log10(np.abs(ktb_var))
-            plot_main = 20 * np.log10(np.abs(plot_main))
-            plot_opt = 20 * np.log10(np.abs(plot_opt))
-            plot_alg = 20 * np.log10(np.abs(plot_alg))
+            ktb_var = 10*np.log10(np.abs(ktb_var+1e-1))
+            plot_main = 20 * np.log10(np.abs(plot_main+1e-1))
+            plot_opt = 20 * np.log10(np.abs(plot_opt+1e-1))
+            plot_alg = 20 * np.log10(np.abs(plot_alg+1e-1))
 
             # need to fix scalling on power plot
             event_start = None
             event_end = None
 
-        eig_val, eig_vec = SignalAnalyzer.eigenvalue_decomp(X)
+        if event_start is not None:
+            wien_event = Wiener(X=X[:,event_start:event_end], d=d[event_start:event_end], order=K_taps)
+            _, _, wien_W = wien_event.run()
+            eig_val, eig_vec = SignalAnalyzer.eigenvalue_decomp(X[:,event_start:event_end])
+        else:
+            eig_val, eig_vec = SignalAnalyzer.eigenvalue_decomp(X)
 
         ovr.update_plots(main_iq=plot_main, opt_iq=plot_opt, alg_iq=plot_alg,
                          t=t,
