@@ -250,7 +250,7 @@ class ada_overview(QWidget):
 
 if __name__ == "__main__":
 
-    from tests.test_cases.adc_test import multiple_jammer_case_with_adc
+    from tests.test_cases.adc_test import multiple_jammer_case_with_adc, calculate_leaky_gamma
     from itertools import chain
     from core.dsp.signal_new import Signal
     from core.dsp.signal_analyzer.signal_analyzer import SignalAnalyzer
@@ -262,7 +262,7 @@ if __name__ == "__main__":
     jam_SNRs = None
     jam_SNRs = [30, 10, 5, 0, 3, 8, 1]
     #jam_SNRs = [40, 0, 5, 0, 3, 8, 1]
-    disconnected_elements = [7,8]
+    disconnected_elements = [8]
     input_sigs, mixed_sigs, antenna, adc = multiple_jammer_case_with_adc(tgt_on=True,
                                                                     num_jammers=5,
                                                                     num_antenna_elements=8,
@@ -272,6 +272,9 @@ if __name__ == "__main__":
                                                                     min_gate_range_jammer=[0.2,0.2],
                                                                     max_gate_range_jammer=[0.8,0.8],
                                                                      disconnected_elements=disconnected_elements)
+
+    A_n = antenna.A_n
+    print(f"Noisy Matrix Condition number: {np.linalg.cond(A_n):0.2f}")
     #input_sigs, mixed_sigs, antenna = multiple_jammer_case_0(tgt_on=True,
     #                                                         num_jammers=3,
     #                                                         num_antenna_elements=8,
@@ -282,18 +285,30 @@ if __name__ == "__main__":
         event_names.append((idx, e.label))
 
     mf = input_sigs[0].events[0].pulse_iq
-
+    gamma = calculate_leaky_gamma(noise_bits=4, jnr_min_db=0, margin_db=0)
+    #gamma = 0
+    print(f"Using leaky lms gamma {gamma}")
+    mu = 0.05
     ################### controller preprocessing steps? #################
     # extract canceller algorithm channels, and do some stats
     X = adc.X_dig[1:,:]
     d = adc.X_dig[0,:]
 
     R_xx = X@X.conj().T
-    print(f"Rank: {np.linalg.matrix_rank(R_xx)}")
+    eig_val, eig_vec = SignalAnalyzer.eigenvalue_decomp(X)
+    print(f"R_xx Rank: {np.linalg.matrix_rank(R_xx)}")
+    print(f"R_xx condition number: {np.linalg.cond(R_xx):0.2f}")
+    print(f"R_xx Eigen Values:")
+    for val in eig_val.real:
+        print(f"   {val}")
+    spread = np.max(eig_val.real)/np.min(eig_val.real)
+    print(f"Eigenvalue spread: {spread:0.2f} ({10*np.log10(spread)})")
+
+
 
     # Extract dynamic power parameters from antenna and generated signals
     M_aux = X.shape[0]  # 7 auxiliary channels
-    K_taps = 1  # FIR order
+    K_taps = 1 # FIR order
     ktb_var = 10**(adc.ktb_db_int16/10)  # Thermal noise floor
 
     # Estimate actual jammer power bounds from signal matrices
@@ -305,7 +320,7 @@ if __name__ == "__main__":
     #print(f"Calculated Leaky LMS gamma: {gamma:.4e}")
 
     # LMS object, Wiener Object
-    lms = nlms(X=X, d=d, mu=0.1, order=K_taps, gamma=0)
+    lms = nlms(X=X, d=d, mu=mu, order=K_taps, gamma=gamma)
     wien = Wiener(X=X, d=d, order=K_taps)
     lms_iq, _, lms_W = lms.run()
     wien_iq, _, wien_W = wien.run()
@@ -318,6 +333,10 @@ if __name__ == "__main__":
         # handle event extraction
         event_start = None
         event_end = None
+        lms = nlms(X=X, d=d, mu=mu, order=K_taps, gamma=gamma)
+        wien = Wiener(X=X, d=d, order=K_taps)
+        lms_iq, _, lms_W = lms.run()
+        wien_iq, _, wien_W = wien.run()
         plot_main = d
         plot_opt = wien_iq
         plot_alg = lms_iq

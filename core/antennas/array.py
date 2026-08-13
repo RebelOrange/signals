@@ -172,14 +172,15 @@ class AntennaArray:
         # 3. Element-wise product of spatial phase and individual element gains
         return v * gains
 
-    def mixing_matrix(self, doas):
+    def mixing_matrix(self, doas, ktb_var:float = 0.0):
         A = np.column_stack([self.manifold_vector(doa) for doa in doas])
 
         # Zero out rows for disconnected elements across all DOAs
         if hasattr(self, "disconnected_elements") and self.disconnected_elements:
             for ch_idx in self.disconnected_elements:
                 A[ch_idx, :] = 0.0
-
+        N = ones_like(A)*ktb_var
+        self.A_n = A+N
         return A
 
     def signals_matrix(self, signals_list: list[np.ndarray]):
@@ -199,7 +200,7 @@ class AntennaArray:
 
     def receive(self, signals: list, doas: list[tuple[float, float]], ktb_var: float = 0):
         self.doas = doas
-        A = self.mixing_matrix(doas)
+        A = self.mixing_matrix(doas, ktb_var)
         self.A = A
         if self.mixer is not None and hasattr(self.mixer, 'set_mixing_matrix') and hasattr(self.mixer, 'mix_signals'):
             self.mixer.set_mixing_matrix(self.A)

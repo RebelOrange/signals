@@ -7,6 +7,7 @@ class Mixer:
         self.A: np.ndarray = None # mixing matrix
         self.X: np.ndarray = None # datamatrix input of signals
         self.Y: np.ndarray = None # datamatrix output of mixing
+        self.A_n: np.ndarray= None
 
         pass
 
