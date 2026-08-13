@@ -134,8 +134,25 @@ class ada_overview(QWidget):
     def _update_scree_plot(self, eigs):
         ax = self.w_axes["R_xx"]
         x = np.arange(len(eigs))
-        ax.stem(eigs)
+        ax.stem(10*np.log10(eigs))
+        ax.set_title("R_xx Eigenvalues")
         ax.grid(True)
+        ax.set_ylabel("Power (dB)")
+        ax.set_xlabel("Index")
+
+    def _update_final_weights(self, w_opt, w_alg):
+        ax = self.w_axes["final_weights"]
+        ax.set_title("Final Weights")
+        M, L = np.shape(w_alg) # M channels, L samples
+        x = np.ones((1,L))
+        for m in range(M):
+            ax.plot(m, np.abs(w_opt[m]), "o",label="Optimal", mfc="b")
+            ax.plot(np.squeeze(x*m), np.abs(w_alg[m,:]), ".",label="Algorithm", mfc="r", alpha=0.1)
+        ax.grid(True)
+        ax.set_ylabel("Amplitude")
+        ax.set_xlabel("Aux Antenna Element")
+        ax.legend(loc="upper right")
+
 
     def _update_weight_constelation(self, w_opt, w_alg,
                                     event_start: int = None,
@@ -146,11 +163,19 @@ class ada_overview(QWidget):
         ax = self.w_axes["weight_plane"]
         for m in range(M):
             w = np.squeeze(w_alg[m,:])
-            l, = ax.plot(w.real, w.imag, ".")
+            l, = ax.plot(w.real, w.imag, ".", label=f"W_alg {m}", alpha=0.2)
             color = l.get_color()
             w = np.squeeze(w_opt[m])
-            ax.plot(w.real, w.imag, "^", mec="k", mfc=color)
+            ax.plot(w.real, w.imag, "^", mec="k", mfc=color, label=f"W_opt {m}")
+
+        lims = 1.25*np.max(np.abs(w_opt))
+        ax.set_ylim([-lims, lims])
+        ax.set_xlim([-lims, lims])
+        ax.set_title("Complex Weights")
         ax.grid(True)
+        ax.set_ylabel("Imaginary")
+        ax.set_xlabel("Real")
+        ax.legend(loc="upper right")
 
 
     def _update_ts(self, main_iq: np.ndarray, opt_iq:np.ndarray, alg_iq:np.ndarray,
@@ -205,6 +230,7 @@ class ada_overview(QWidget):
         self._update_weight_constelation(w_opt=opt_weights, w_alg=alg_weights)
         if eig_val is not None:
             self._update_scree_plot(eig_val)
+        self._update_final_weights(w_opt=opt_weights, w_alg=alg_weights)
 
         self._draw_plots()
 
@@ -214,7 +240,7 @@ class ada_overview(QWidget):
 
 if __name__ == "__main__":
 
-    from tests.test_cases.mlms import test_case_0
+    from tests.test_cases.mlms import multiple_jammer_case_0
     from itertools import chain
     from core.dsp.signal_new import Signal
     from core.dsp.signal_analyzer.signal_analyzer import SignalAnalyzer
@@ -222,7 +248,13 @@ if __name__ == "__main__":
     from core.dsp.algorithms.canceller_algorithms.providers.Wiener import Wiener
     from typing import Optional
 
-    input_sigs, mixed_sigs, antenna = test_case_0(TIMEIT=True)
+    jam_SNRs = [20, 22, 24, 20, 20, 20]
+    jam_SNRs = None
+    jam_SNRs = [30, 10, 5, 0, -3]
+    input_sigs, mixed_sigs, antenna = multiple_jammer_case_0(tgt_on=True,
+                                                             num_jammers=3,
+                                                             num_antenna_elements=8,
+                                                             jam_SNRs=jam_SNRs)
     sig = mixed_sigs[0] # signal for time vector and events
     event_names = []
     for idx, e in enumerate(mixed_sigs[0].events):
@@ -234,6 +266,9 @@ if __name__ == "__main__":
     # extract canceller algorithm channels, and do some stats
     X = antenna.X_n[1:,:]
     d = antenna.X_n[0,:]
+
+    R_xx = X@X.conj().T
+    print(f"Rank: {np.linalg.matrix_rank(R_xx)}")
 
     # Extract dynamic power parameters from antenna and generated signals
     M_aux = X.shape[0]  # 7 auxiliary channels
@@ -249,7 +284,7 @@ if __name__ == "__main__":
     #print(f"Calculated Leaky LMS gamma: {gamma:.4e}")
 
     # LMS object, Wiener Object
-    lms = nlms(X=X, d=d, mu=1.0, order=K_taps, gamma=0)
+    lms = nlms(X=X, d=d, mu=0.1, order=K_taps, gamma=0)
     wien = Wiener(X=X, d=d, order=K_taps)
     lms_iq, _, lms_W = lms.run()
     wien_iq, _, wien_W = wien.run()
@@ -313,8 +348,10 @@ if __name__ == "__main__":
     # signal connects
 
     # initial data load
+    eig_val, eig_vec = SignalAnalyzer.eigenvalue_decomp(X)
     ovr.update_plots(main_iq=d, opt_iq=wien_iq, alg_iq=lms_iq,
                      t=t,
+                     eig_val=eig_val,
                      opt_weights=wien_W, alg_weights=lms_W)
     ovr.populate_events(event_names)
     ovr.control_changed.connect(handle_ctrl_event)

@@ -50,6 +50,14 @@ class nlms:
             # step weights
             mu_norm = self.mu/(np.vdot(x_fifo, x_fifo).real+self.eps)
             w = (1.0-mu_norm*self.gamma)*w +mu_norm * e[i].conj()* x_fifo
+            if i % 100 ==0:
+                for m in range(M):
+                    N = 1
+                    desired_variance = 0.000*np.abs(w[m])  # e.g., variance = 4 (std dev = 2)
+                    sigma = np.sqrt(desired_variance)
+                    v_real = np.random.normal(loc=0.0, scale=sigma, size=(N, 1))
+                    v_imag = np.random.normal(loc=0.0, scale=sigma, size=(N, 1))
+                    w[m]+=v_real+1j*v_imag
             if i == L-1:
                 break
             W[:, i+1] = w

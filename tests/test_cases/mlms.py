@@ -12,14 +12,17 @@ from core.dsp.signal_generators.signal_providers.FM import LFMConfig
 from core.dsp.signal_generators.signal_providers.Noise import NoiseConfig
 
 
-def test_case_0(tgt_type: str = "lfm",
-                tgt_az: float = 0.0,
-                jam_az: float = 10.0,
-                TIMEIT: bool = False,
-                ) -> tuple[list[Signal], list[Signal], ULA]:
+def multiple_jammer_case_0(tgt_type: str = "lfm",
+                           tgt_on: bool = True,
+                           num_jammers:int = 3,
+                           num_antenna_elements: int = 8,
+                           jam_SNRs: list[float] = None,
+                           jam_doas: list[float] = None,
+                           TIMEIT: bool = False,
+                           ) -> tuple[list[Signal], list[Signal], ULA]:
     ## Simulation config
     # antenna
-    num_elements = 8
+    num_elements = num_antenna_elements
 
     # signal setup
     JS = 30
@@ -27,15 +30,15 @@ def test_case_0(tgt_type: str = "lfm",
     total_samps = 5000
 
     tgt_type = tgt_type.lower()
-    tgt_doa = (tgt_az, 0.0)  # degrees
-    tgt_bw = 0.05 * fs  # for lfm
+    tgt_doa = (0.0, 0.0)  # degrees
+    tgt_bw = 0.01 * fs  # for lfm
     tgt_start_samp = 1000
     tgt_min_num_samps = 2000
     SNR = 10
     sig_amp = 1
     ktb_var = sig_amp / 10
 
-    jam_doa = (jam_az, 0.0)  # degrees
+    #jam_doa = (jam_az, 0.0)  # degrees
     noise_bw = 0.5 * fs
     noise_start_samp = 500
     noise_min_num_samps = 3000
@@ -43,15 +46,16 @@ def test_case_0(tgt_type: str = "lfm",
     # class instantiation
     antenna = ULA(num_elements=num_elements)
     patterns = ([ElementPatterns.taylor_subarray(num_sub_elements=20)]
-                + [ElementPatterns.delta_subarray(4)] * 7)
+                + [ElementPatterns.delta_subarray(4)] * (num_antenna_elements-1))
     antenna.set_patterns(patterns)
 
     ################# baseline signals: jammer + tgt signals
     t_grid = TimeGrid(sample_rate=fs, duration=1000e-6)
-    tgt_sig_config = PulsedSignalConfig(waveform_config=LFMConfig(chirp_bandwidth=tgt_bw,
-                                                                  amplitude=sig_amp,
-                                                                  frequency_center=0,
-                                                                  pulse_width=500e-6),
+    wfm_config = LFMConfig(chirp_bandwidth=tgt_bw,
+                          amplitude=sig_amp,
+                          frequency_center=0,
+                          pulse_width=500e-6)
+    tgt_sig_config = PulsedSignalConfig(waveform_config=wfm_config,
                                         gate=TimeGate(start_time=200e-6, stop_time=700e-6))
 
     if TIMEIT:
@@ -60,17 +64,22 @@ def test_case_0(tgt_type: str = "lfm",
     sigs = []
     sigGen = SignalGenerator(time_grid=t_grid)
     tgt_sig = sigGen.create_pulsed_signal([tgt_sig_config], label="Pulsed LFM")
-    #sigs.append(tgt_sig)
     doas = []
-    #doas.append(tgt_doa)
+    if tgt_on:
+        sigs.append(tgt_sig)
+        doas.append(tgt_doa)
+
     # generate 7 random jammer configs
     confs = []
     jam_sigs = []
     jam_vars = []
-    for i in range(7):
-        noise_bw = random.uniform(0.25*fs, 0.89*fs)
-        freq_center = random.uniform(-0.1*fs, 0.1*fs)
-        jam_SNR = random.uniform(-3, 30)+30
+    for i in range(num_jammers):
+        noise_bw = random.uniform(0.89*fs, 0.89*fs)
+        freq_center = random.uniform(-0.0*fs, 0.0*fs)
+        if jam_SNRs is None:
+            jam_SNR = random.uniform(-3, 30)+30
+        else:
+            jam_SNR = jam_SNRs[i] + 30
         jam_var = 10 ** (jam_SNR/ 10) * sig_amp
         jam_vars.append(jam_var)
         start_time = random.uniform(0e-6, 0e-6)
@@ -121,9 +130,12 @@ def test_case_0(tgt_type: str = "lfm",
         # 3. Sample uniformly from the selected range
         return random.uniform(chosen_range[0], chosen_range[1])
 
-    for i in range(7):
+    for i in range(num_jammers):
         az = random_exclusive_float([-65, -10], [10, 65])
-        doas.append((az, 0.0))
+        if jam_doas is None:
+            doas.append((az, 0.0))
+        else:
+            doas.append((jam_doas[i],0.0))
     if TIMEIT:
         start_time = time.time()
     rx_sigs: list[Signal] = antenna.receive(input_sigs, doas, ktb_var=ktb_var)
@@ -203,7 +215,15 @@ if __name__ == "__main__":
     matplotlib.use("Qt5Agg")
 
     start_time = time.time()
-    input_sigs, rx_sigs, antenna = test_case_0(TIMEIT=True)
+    jam_SNRs = [30, 10, 5, 0, -3]
+    num_jammers = 3
+    num_antenna_elements = 8
+    doas = [15.0, -26.0, 33.0]
+    input_sigs, rx_sigs, antenna = multiple_jammer_case_0(tgt_on=True,
+                                                             num_jammers=num_jammers,
+                                                             num_antenna_elements=num_antenna_elements,
+                                                          jam_doas = doas,
+                                                             jam_SNRs=jam_SNRs)
     stop_time = time.time()
 
     doas = antenna.doas
@@ -217,6 +237,8 @@ if __name__ == "__main__":
 
     # Estimate actual jammer power bounds from signal matrices
     X_aux = X[1:, :]
+    R_xx = X_aux@X_aux.conj().T
+    print(f"Rank: {np.linalg.matrix_rank(R_xx)}")
     ch_powers = np.mean(np.abs(X_aux) ** 2, axis=1)
     var_jam_min = np.min(ch_powers)
     var_jam_max = np.max(ch_powers)
@@ -254,7 +276,7 @@ if __name__ == "__main__":
     plot_scan_response(y, x, ax=ax)
     lims = [-50, 20]
     ax.set_ylim((lims[0], lims[1]))
-    for i in range(8):
+    for i in range(num_jammers+1):
         if i ==0:
             ax.plot([doas[i][0], doas[i][0]],lims, "--g")
         else:
@@ -274,7 +296,8 @@ if __name__ == "__main__":
     plot_element_scan_responses(az_grid=x, element_powers=y, ax=ax3)
     lims = [-50, 20]
     ax3.set_ylim((lims[0], lims[1]))
-    for i in range(8):
+    print(len(doas))
+    for i in range(num_jammers+1):
         if i ==0:
             ax3.plot([doas[i][0], doas[i][0]],lims, "--g")
         else:
