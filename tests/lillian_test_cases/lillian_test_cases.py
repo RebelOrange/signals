@@ -51,25 +51,44 @@ if __name__ == "__main__":
     root_folder = "/opt/rfdev-envs/python/signals/tests/lillian_test_cases/"
     ############## single signals ##########
     # 1. CW
-    sigGen = SignalGenerator.from_config(time_grid=t_grid, signal_config=cw_config)
-    sig = sigGen.generate_signal(ignore_events=True)
-    sig.save_to_csv(root_folder+ "single_signals/pulse_1.csv")
+    if False:
+        sigGen = SignalGenerator.from_config(time_grid=t_grid, signal_config=cw_config)
+        sig = sigGen.generate_signal(ignore_events=True)
+        sig.save_to_csv(root_folder+ "single_signals/pulse_1.csv")
 
-    # 2. LFM
-    sigGen = SignalGenerator.from_config(time_grid=t_grid, signal_config=lfm_config)
-    sig = sigGen.generate_signal(ignore_events=True)
-    sig.save_to_csv(root_folder + "single_signals/pulse_2.csv")
+        # 2. LFM
+        sigGen = SignalGenerator.from_config(time_grid=t_grid, signal_config=lfm_config)
+        sig = sigGen.generate_signal(ignore_events=True)
+        sig.save_to_csv(root_folder + "single_signals/pulse_2.csv")
 
-    # 3. BPSK
-    sigGen = SignalGenerator.from_config(time_grid=t_grid, signal_config=bpsk_config)
-    sig = sigGen.generate_signal(ignore_events=True)
-    sig.save_to_csv(root_folder + "single_signals/pulse_3.csv")
+        # 3. BPSK
+        sigGen = SignalGenerator.from_config(time_grid=t_grid, signal_config=bpsk_config)
+        sig = sigGen.generate_signal(ignore_events=True)
+        sig.save_to_csv(root_folder + "single_signals/pulse_3.csv")
 
-    # 4. Noise
-    sigGen = SignalGenerator.from_config(time_grid=t_grid, signal_config=jam_1_config)
-    sig = sigGen.generate_signal(ignore_events=True)
-    sig.save_to_csv(root_folder + "single_signals/pulse_4.csv")
+        # 4. Noise
+        sigGen = SignalGenerator.from_config(time_grid=t_grid, signal_config=jam_1_config)
+        sig = sigGen.generate_signal(ignore_events=True)
+        sig.save_to_csv(root_folder + "single_signals/pulse_4.csv")
 
+
+
+    wfm_config = LFMConfig(chirp_bandwidth=500e3,
+                          amplitude=1,
+                          frequency_center=0,
+                          pulse_width=500e-6)
+    tgt_sig_config = PulsedSignalConfig(waveform_config=wfm_config,
+                                        gate=TimeGate(start_time=200e-6, stop_time=700e-6))
+
+    conf = PulsedSignalConfig(waveform_config=NoiseConfig(bandwidth=1e6,
+                                                          frequency_center=0,
+                                                          variance=5),
+                              gate=TimeGate(start_time=0, stop_time=999e-6))
+
+    t_grid = TimeGrid(sample_rate=fs, duration=1000e-6)
+    sigGen = SignalGenerator(time_grid=t_grid)
+    sig = sigGen.create_pulsed_signal(pulsed_configs=[tgt_sig_config, conf])
+    sig.save_to_csv(root_folder+"examp.csv")
 
 
 
