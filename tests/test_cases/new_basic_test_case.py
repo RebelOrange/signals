@@ -155,7 +155,7 @@ if __name__ == "__main__":
     plot_spectrogram(S=S, extent=extent, ax=ax2)
 
     fig, ax3 = plt.subplots()
-    x, y = antenna.element_scan_responses()
+    x, y = antenna.element_scan_responses_datamatrix()
     plot_element_scan_responses(az_grid=x, element_powers=y, ax=ax3)
 
 

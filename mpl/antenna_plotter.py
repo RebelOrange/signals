@@ -29,6 +29,14 @@ def plot_scan_response(resp: np.ndarray, az_points: np.ndarray, ax:Axes, axis_co
         axis_config = AxisConfig(title="Scan Response", xlabel="Azimuth [deg]", ylabel="Response [dB]", grid=True)
     return apply_axis_config(ax, axis_config)
 
+def plot_element_patterns(az_points:np.ndarray, patterns: list[np.ndarray],ax:Axes, axis_config: AxisConfig|None = None):
+    for pat in patterns:
+        ax.plot(az_points, pat)
+
+    if axis_config is None:
+        axis_config = AxisConfig(title="Element Patterns", xlabel="Azimuth [deg]", ylabel="Response [dB]")
+    return apply_axis_config(ax, axis_config)
+
 def plot_element_scan_responses(az_grid, element_powers, el: float = 0.0, ax=None, db: bool = True):
 
     M, _ = element_powers.shape

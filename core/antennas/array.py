@@ -294,7 +294,22 @@ class AntennaArray:
 
         return scan_angles, 20 * np.log10(scan_powers + eps)
 
-    def element_scan_responses(self, az_grid=None, el: float = 0.0, db: bool = True):
+    def element_pattern_response(self, az_grid=None, el: float = 0.0, db: bool = True):
+        if az_grid is None:
+            az_grid = np.linspace(-90, 90, 722)
+
+        num_angles = len(az_grid)
+        element_powers = np.zeros((self.num_elements, num_angles))
+        for j, pat in enumerate(self.element_patterns):
+            for i, az in enumerate(az_grid):
+                element_powers[j,i] = np.abs(pat(az, el))
+
+        if db:
+            element_powers = 20*np.log10(element_powers)
+
+        return az_grid, element_powers
+
+    def element_scan_responses_datamatrix(self, az_grid=None, el: float = 0.0, db: bool = True):
         """
         Calculates the scan response (power vs azimuth) for each individual element
         in the array based on the received data matrix X.

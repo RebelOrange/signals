@@ -308,7 +308,7 @@ if __name__ == "__main__":
 
 
     fig, ax3 = plt.subplots()
-    x, y = antenna.element_scan_responses()
+    x, y = antenna.element_scan_responses_datamatrix()
     plot_element_scan_responses(az_grid=x, element_powers=y, ax=ax3)
     lims = [-50, 20]
     #ax3.set_ylim((lims[0], lims[1]))
