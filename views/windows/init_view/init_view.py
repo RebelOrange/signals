@@ -22,7 +22,19 @@ from mpl.axis_config import *
 
 from dataclasses import dataclass
 
+from core.dsp.signal_generators.signal_providers.CW import CwConfig
+from core.dsp.signal_generators.signal_providers.FM import LFMConfig
+from core.dsp.signal_generators.signal_providers.PSK import BPSKConfig, CodeConstructer
+
+from ConfigDialog import DynamicConfigDialog
+
 class init_view(QWidget):
+    CONFIG_MAP = {
+        "CW": CwConfig,
+        "LFM": LFMConfig,
+        "BPSK": BPSKConfig,
+    }
+
     simulation_requested = pyqtSignal(dict)
     preview_requested = pyqtSignal(dict)
 
@@ -34,6 +46,7 @@ class init_view(QWidget):
         self.axes: Axes
         self.canvas: FigureCanvas
         self._init_ui()
+        self.active_config = None
 
     def _init_ui(self):
         self.setLayout(self._layout())
@@ -97,16 +110,17 @@ class init_view(QWidget):
         self.tgt_sig_type.addItem("CW", userData="cw")
         self.tgt_sig_type.addItem("Noise", userData="noise")
 
+        self.btn_configure = QPushButton("Configure Signal")
+        self.btn_configure.clicked.connect(self._open_config_dialog)
+
         self.tgt_gate = QLineEdit("0.4, 0.6")
         self.tgt_gate.setPlaceholderText("Comma-separated Gate (Gate Fraction)")
 
-        self.tgt_timebandwidth_db = QLineEdit("10")
-        self.tgt_timebandwidth_db.setPlaceholderText("e.g. 10 (dB)")
 
         form_target.addRow("Target On:", self.chk_tgt_on)
         form_target.addRow("Signal Type:", self.tgt_sig_type)
+        form_target.addRow("", self.btn_configure)
         form_target.addRow("Fractional Gate:", self.tgt_gate)
-        form_target.addRow("Time-Bandwidth Product (dB)", self.tgt_timebandwidth_db)
         grp_target.setLayout(form_target)
 
         # --- Group 2: Jammer Signal Settings ---
@@ -156,6 +170,19 @@ class init_view(QWidget):
         main_layout.addWidget(self.btn_run)
         main_layout.addStretch()
 
+    def _open_config_dialog(self):
+        selected_key = self.tgt_sig_type.currentText()
+        config_cls = self.CONFIG_MAP[selected_key]
+
+        # Reuse current config if it matches the selected type
+        current = self.active_config if isinstance(self.active_config, config_cls) else None
+
+        dialog = DynamicConfigDialog(config_cls, current_config=current, parent=self)
+        if dialog.exec_():
+            self.active_config = dialog.created_config
+            print(f"Successfully created {selected_key} Config object:")
+            print(self.active_config)
+
     def _init_plot_layout(self, layout:QVBoxLayout):
         mosaic_layout = [["spatial_plot", "."],
                          ["time_plot", "dynamic_range"]]
@@ -204,10 +231,7 @@ class init_view(QWidget):
         ax.set_ylabel("Power [dB]")
         ax.set_ylim(ylim)
 
-
-
-    ################### Events ######################################
-    def _on_preview_clicked(self):
+    def get_params(self):
         try:
             params = {
                 "num_jammers": self.spin_num_jammers.value(),
@@ -216,6 +240,7 @@ class init_view(QWidget):
                 "main_order": self.main_antenna_order.value(),
 
                 "tgt_on": self.chk_tgt_on.isChecked(),
+                "tgt_config": self.active_config,
 
                 "jam_SNRs": self._parse_floats(self.txt_jam_snrs.text()),
                 "jam_bw_range": self._parse_floats(self.txt_bw_range.text()),
@@ -224,40 +249,28 @@ class init_view(QWidget):
                 "max_gate_range_jammer": self._parse_floats(self.txt_max_gate.text()),
             }
 
-            # Emit parsed dictionary to Controller
-            self.preview_requested.emit(params)
-
         except ValueError as e:
             QMessageBox.critical(
                 self,
                 "Parsing Error",
                 f"Invalid numerical entry in form fields.\nDetails: {e}"
             )
+
+        return params
+
+    ################### Events ######################################
+    def _on_preview_clicked(self):
+        params = self.get_params()
+
+        # Emit parsed dictionary to Controller
+        self.preview_requested.emit(params)
+
 
     def _on_run_clicked(self):
-        try:
-            params = {
-                "tgt_on": self.chk_tgt_on.isChecked(),
-                "num_jammers": self.spin_num_jammers.value(),
-                "num_antenna_elements": self.spin_elements.value(),
-                "jam_SNRs": self._parse_floats(self.txt_jam_snrs.text()),
-                "jam_bw_range": self._parse_floats(self.txt_bw_range.text()),
-                "doas": self._parse_floats(self.txt_doas.text()),
-                "min_gate_range_jammer": self._parse_floats(self.txt_min_gate.text()),
-                "max_gate_range_jammer": self._parse_floats(self.txt_max_gate.text()),
-                "disconnected_elements": self._parse_ints(self.txt_disconnected.text()),
-            }
+        params = self.get_params()
 
-            # Emit parsed dictionary to Controller
-            self.simulation_requested.emit(params)
-
-        except ValueError as e:
-            QMessageBox.critical(
-                self,
-                "Parsing Error",
-                f"Invalid numerical entry in form fields.\nDetails: {e}"
-            )
-
+        # Emit parsed dictionary to Controller
+        self.simulation_requested.emit(params)
 
 # Example usage inside Controller
 if __name__ == "__main__":
@@ -280,6 +293,8 @@ if __name__ == "__main__":
                     + [ElementPatterns.delta_subarray(4, gain_offset=(-ssl_taylor + 3))] * (num_antenna_elements - 1))
         antenna.set_disconnected_elements(params["disconnected_elements"])
         antenna.set_patterns(patterns)
+
+        print(params["tgt_config"])
 
         doas = params["doas"]
         pattern_resp_names = ["main", "aux_0", "aux_1", "aux_2", "aux_3", "aux_4", "aux_5", "aux_6", "aux_7", "aux_8", "aux_9"]
