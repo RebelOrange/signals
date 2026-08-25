@@ -3,11 +3,24 @@ from views.windows.init_view.init_view import init_view
 from views.windows.init_view.ConfigDialog import DynamicConfigDialog
 from core.antennas.array import ElementPatterns, AntennaArray
 from core.antennas.classic.ULA import ULA
+from .simulation_model import sim_case_0
+from typing import List
+from PyQt5.QtCore import QObject, pyqtSignal
+
+# 1. Tiny helper class strictly for the signal infrastructure
+class ControllerSignals(QObject):
+    run_event = pyqtSignal(int)
+
+from core.dsp.signal_new import Signal
+
 
 class InitController:
-    def __init__(self, view: init_view, antenna: AntennaArray, DynamicConfigDialog = None):
+    def __init__(self, view: init_view, antenna: AntennaArray, input_sigs: List[Signal], mixed_sigs: List[Signal]):
+        self.signals = ControllerSignals()
         self.view = view
         self.antenna = antenna
+        self.input_sigs = input_sigs
+        self.mixed_sigs = mixed_sigs
         self._connect_signals()
 
     def _connect_signals(self) -> None:
@@ -19,7 +32,8 @@ class InitController:
         for k, v in params.items():
             print(f"\t{k}: {v}")
 
-        ssl_taylor = 25
+        ssl_taylor = params["sll"]
+        print(f"sidelobe level: {ssl_taylor}")
         num_antenna_elements = params["num_antenna_elements"]
         main_order = params["main_order"]
         # make antenna for spatial response plot
@@ -38,6 +52,24 @@ class InitController:
         self.view._draw_plots()
         pass
 
-    def _handle_sim(self) -> None:
+    def _handle_sim(self, p: dict) -> None:
         print("handled sim")
+        for k, v in p.items():
+            print(f"\t{k}: {v}")
+
+        tgt_config = p["tgt_config"]
+
+        self.input_sigs, self.mixed_sigs, self.antenna = sim_case_0(tgt_config=tgt_config,
+                                                                    tgt_on=p["tgt_on"],
+                                                                    num_jammers=p["num_jammers"],
+                                                                    tgt_SNR=3,
+                                                                    jam_SNRs=p["jam_SNRs"],
+                                                                    jam_doas=p["doas"],
+                                                                    sidelobe_gain_offset=p["sidelobe_gain_offset"],
+                                                                    bw_range_jammer=p["bw_range_jammer"],
+                                                                    min_gate_range_jammer=p["min_gate_range_jammer"],
+                                                                    max_gate_range_jammer=p["max_gate_range_jammer"],
+                                                                    disconnected_elements=p["disconnected_elements"])
+        print("created simulation data")
+        self.signals.run_event.emit(0)
         pass

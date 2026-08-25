@@ -26,7 +26,7 @@ from core.dsp.signal_generators.signal_providers.CW import CwConfig
 from core.dsp.signal_generators.signal_providers.FM import LFMConfig
 from core.dsp.signal_generators.signal_providers.PSK import BPSKConfig, CodeConstructer
 
-from ConfigDialog import DynamicConfigDialog
+from .ConfigDialog import DynamicConfigDialog
 
 class init_view(QWidget):
     CONFIG_MAP = {
@@ -238,10 +238,13 @@ class init_view(QWidget):
                 "num_antenna_elements": self.spin_elements.value(),
                 "disconnected_elements": self._parse_ints(self.txt_disconnected.text()),
                 "main_order": self.main_antenna_order.value(),
+                "sll": float(self.sll_db.text()),
+                "sidelobe_gain_offset": float(self.aux_gain_db.text()),
 
                 "tgt_on": self.chk_tgt_on.isChecked(),
                 "tgt_config": self.active_config,
 
+                "bw_range_jammer": self._parse_floats(self.txt_bw_range.text()),
                 "jam_SNRs": self._parse_floats(self.txt_jam_snrs.text()),
                 "jam_bw_range": self._parse_floats(self.txt_bw_range.text()),
                 "doas": self._parse_floats(self.txt_doas.text()),

@@ -82,7 +82,7 @@ if __name__ == "__main__":
 
     conf = PulsedSignalConfig(waveform_config=NoiseConfig(bandwidth=1e6,
                                                           frequency_center=0,
-                                                          variance=5),
+                                                          variance=.5),
                               gate=TimeGate(start_time=0, stop_time=999e-6))
 
     t_grid = TimeGrid(sample_rate=fs, duration=1000e-6)

@@ -176,6 +176,7 @@ class AntennaArray:
         A = np.column_stack([self.manifold_vector(doa) for doa in doas])
 
         # Zero out rows for disconnected elements across all DOAs
+
         if hasattr(self, "disconnected_elements") and self.disconnected_elements:
             for ch_idx in self.disconnected_elements:
                 A[ch_idx, :] = 0.0
