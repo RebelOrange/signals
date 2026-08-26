@@ -6,6 +6,7 @@ from core.antennas.classic.ULA import ULA
 from .simulation_model import sim_case_0
 from typing import List
 from PyQt5.QtCore import QObject, pyqtSignal
+from .AppState import AppState
 
 # 1. Tiny helper class strictly for the signal infrastructure
 class ControllerSignals(QObject):
@@ -15,12 +16,10 @@ from core.dsp.signal_new import Signal
 
 
 class InitController:
-    def __init__(self, view: init_view, antenna: AntennaArray, input_sigs: List[Signal], mixed_sigs: List[Signal]):
+    def __init__(self, view: init_view, state: AppState):
         self.signals = ControllerSignals()
         self.view = view
-        self.antenna = antenna
-        self.input_sigs = input_sigs
-        self.mixed_sigs = mixed_sigs
+        self.state = state
         self._connect_signals()
 
     def _connect_signals(self) -> None:
@@ -37,16 +36,16 @@ class InitController:
         num_antenna_elements = params["num_antenna_elements"]
         main_order = params["main_order"]
         # make antenna for spatial response plot
-        self.antenna = ULA(num_elements=num_antenna_elements)
+        self.state.antenna = ULA(num_elements=num_antenna_elements)
         patterns = ([ElementPatterns.taylor_subarray(num_sub_elements=main_order, sll_db=ssl_taylor)]
                     + [ElementPatterns.delta_subarray(4, gain_offset=(-ssl_taylor + 3))] * (num_antenna_elements - 1))
-        self.antenna.set_disconnected_elements(params["disconnected_elements"])
-        self.antenna.set_patterns(patterns)
+        self.state.antenna.set_disconnected_elements(params["disconnected_elements"])
+        self.state.antenna.set_patterns(patterns)
 
         doas = params["doas"]
         pattern_resp_names = ["main", "aux_0", "aux_1", "aux_2", "aux_3", "aux_4", "aux_5", "aux_6", "aux_7", "aux_8",
                               "aux_9"]
-        az_points, pattern_resp = self.antenna.element_pattern_response()
+        az_points, pattern_resp = self.state.antenna.element_pattern_response()
         self.view._update_antenna_preview(pattern_responses=pattern_resp, az_points=az_points,
                                     pattern_labels=pattern_resp_names, doas=doas)
         self.view._draw_plots()
@@ -59,7 +58,7 @@ class InitController:
 
         tgt_config = p["tgt_config"]
 
-        self.input_sigs, self.mixed_sigs, self.antenna = sim_case_0(tgt_config=tgt_config,
+        self.state.input_sigs, self.state.rx_sigs, self.state.antenna = sim_case_0(tgt_config=tgt_config,
                                                                     tgt_on=p["tgt_on"],
                                                                     num_jammers=p["num_jammers"],
                                                                     tgt_SNR=3,

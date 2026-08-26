@@ -1,3 +1,4 @@
+from controllers import AppState
 from views.windows.SignalAnalyzer.Overview import overview
 from views.windows.init_view.ConfigDialog import DynamicConfigDialog
 from core.antennas.array import ElementPatterns, AntennaArray
@@ -7,24 +8,32 @@ from core.dsp.signal_generators.sig_gen_new import SignalGenerator
 from core.dsp.signal_analyzer.signal_analyzer import SignalAnalyzer
 
 import numpy as np
-
+from .AppState import AppState
 from typing import Optional
+from itertools import chain
 
 class SignalOverviewController:
 
-    def __init__(self, view: overview, input_sigs, mixed_sigs, antenna):
+    def __init__(self, view: overview, state: AppState):
         self.view = view
-        self.input_sigs = input_sigs
-        self.mixed_sigs = mixed_sigs
-        self.antenna = antenna
-
+        self.state = state
         self.names: list[tuple[int, str]] = []
         self.sig_dict: dict[int, tuple[str, Signal]] = {}
 
         self._connect_signals()
 
     def _connect_signals(self):
+        self.view.signal_selected.connect(lambda sig_id: self._handle_selection(sig_id, event_id=None))
         pass
+
+    def update_view_from_state(self):
+        print(self.state)
+        for idx, sig in enumerate(chain(self.state.input_sigs, self.state.rx_sigs)):
+            print(f"{idx}: {sig.label}")
+            print(sig)
+            self.sig_dict[idx] = (sig.label, sig)
+            self.names.append((idx, sig.label))
+        self.view.populate_dropdown(self.names)
 
     def _handle_selection(self, signal_id:int, event_id: Optional[int]=None):
         print(f"Controller: Selection -> Signal ID: {signal_id}, Event ID: {event_id}")

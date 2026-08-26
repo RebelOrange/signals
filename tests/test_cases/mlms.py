@@ -227,7 +227,7 @@ if __name__ == "__main__":
     from core.dsp.algorithms.canceller_algorithms.providers.LMS import nlms
     from core.dsp.algorithms.canceller_algorithms.providers.Wiener import Wiener
 
-    matplotlib.use("Qt5Agg")
+    
 
     start_time = time.time()
     jam_SNRs = [30, 10, 5, 0, -3]

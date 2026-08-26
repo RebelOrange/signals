@@ -10,7 +10,7 @@ from mpl.dsp.signal_plotter import *
 from mpl.antenna_plotter import *
 
 import matplotlib
-#matplotlib.use("Qt5Agg")
+#
 
 if __name__ == "__main__":
     ## Simulation config

@@ -1,7 +1,6 @@
 from PyQt5.QtCore import pyqtSignal
 import numpy as np
 from matplotlib import pyplot as plt
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.colors import Normalize
 
 from views.windows.run_window_as_app import *
@@ -105,7 +104,7 @@ class overview(QWidget):
 
     #### plotting functions
     def _draw_plots(self):
-        self.canvas.draw()
+        self.canvas.draw_idle()
 
     def update_plots(self, x_vector: np.ndarray, x_vector_short: np.ndarray,
                      t_vector: np.ndarray, t_vector_short: np.ndarray,

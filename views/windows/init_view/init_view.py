@@ -1,7 +1,6 @@
 from PyQt5.QtCore import pyqtSignal
 import numpy as np
 from matplotlib import pyplot as plt
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.colors import Normalize
 
 from views.windows.run_window_as_app import *
@@ -170,6 +169,13 @@ class init_view(QWidget):
         main_layout.addWidget(self.btn_run)
         main_layout.addStretch()
 
+    def _default_config(self):
+       self.active_config = LFMConfig(pulse_width=100e-6,
+                                      amplitude=1,
+                                      frequency_center=0e6,
+                                      chirp_bandwidth=1e6)
+
+
     def _open_config_dialog(self):
         selected_key = self.tgt_sig_type.currentText()
         config_cls = self.CONFIG_MAP[selected_key]
@@ -207,7 +213,7 @@ class init_view(QWidget):
 
     ################### Figures #####################################
     def _draw_plots(self):
-        self.canvas.draw()
+        self.canvas.draw_idle()
 
     def _update_antenna_preview(self, pattern_responses, az_points, pattern_labels, doas):
         ax = self.axes["spatial_plot"]
@@ -270,6 +276,8 @@ class init_view(QWidget):
 
 
     def _on_run_clicked(self):
+        if self.active_config is None:
+            self._default_config()
         params = self.get_params()
 
         # Emit parsed dictionary to Controller

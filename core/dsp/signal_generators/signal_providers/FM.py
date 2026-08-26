@@ -8,7 +8,7 @@ from .registry import register_provider
 
 @dataclass
 class LFMConfig:
-    pulse_width: Optional[float] = 0
+    pulse_width: Optional[float] = 10e-6
 
     phase: Optional[float] = 0
     amplitude: Optional[float] = 1
@@ -31,8 +31,9 @@ class LFMConfig:
             self.frequency_lower = self.frequency_center - (self.chirp_bandwidth / 2)
             self.frequency_upper = self.frequency_center + (self.chirp_bandwidth / 2)
         else:
-            raise ValueError("Incomplete configuration, specify (frequency_lower, frequency_upper) or"
-                             "(frequency_center, chirp_bandwidth) ")
+            print("Defaulting LFM values to 0 Center Freq and 1MHz BW")
+            self.frequency_center = 0e6
+            self.chirp_bandwidth = 1e6
 
 
 @register_provider(LFMConfig)

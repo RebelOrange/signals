@@ -8,7 +8,7 @@ from .registry import register_provider
 
 @dataclass
 class CwConfig:
-    frequency: float
+    frequency: float= 0
 
     amplitude: Optional[float] = 1
     phase: Optional[float] = 0

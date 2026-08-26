@@ -7,7 +7,7 @@ import matplotlib
 
 from classes_test.Mixer import Mixer
 
-matplotlib.use("Qt5Agg")
+
 from typing import List, Union, Tuple
 from classes_test.ComplexSignal import ComplexSignal
 from scipy.signal.windows import taylor

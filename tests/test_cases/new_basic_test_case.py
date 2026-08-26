@@ -125,7 +125,7 @@ if __name__ == "__main__":
     from core.dsp.algorithms.block_algorithms.block_processor import BlockProcessor
     from core.dsp.algorithms.block_algorithms.providers.MVDR import MvdrConfig
     from core.dsp.signal_analyzer.signal_analyzer import SignalAnalyzer
-    matplotlib.use("Qt5Agg")
+    
 
     start_time = time.time()
     input_sigs, rx_sigs, antenna = test_case_0(TIMEIT=True)

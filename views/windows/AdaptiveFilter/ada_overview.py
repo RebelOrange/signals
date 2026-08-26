@@ -1,7 +1,6 @@
 from PyQt5.QtCore import pyqtSignal
 import numpy as np
 from matplotlib import pyplot as plt
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.colors import Normalize
 
 from views.windows.run_window_as_app import *
@@ -245,8 +244,8 @@ class ada_overview(QWidget):
         self._draw_plots()
 
     def _draw_plots(self):
-        self.iq_canvas.draw()
-        self.w_canvas.draw()
+        self.iq_canvas.draw_idle()
+        self.w_canvas.draw_idle()
 
 if __name__ == "__main__":
 
