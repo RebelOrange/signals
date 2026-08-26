@@ -14,7 +14,7 @@ from matplotlib.cm import ScalarMappable
 
 from mpl.dsp.signal_plotter import *
 from mpl.axis_config import *
-
+from itertools import chain
 from dataclasses import dataclass
 
 """

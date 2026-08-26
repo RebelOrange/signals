@@ -1,6 +1,7 @@
 from views.windows.MainView import MainView
 from controllers.init_controller import InitController
 from controllers.overview_controller import SignalOverviewController
+from controllers.AdaController import AdaController
 from .AppState import AppState
 
 
@@ -12,9 +13,11 @@ class MainController:
         # Instantiating child controllers with their corresponding views
         self.init_ctrl = InitController(view=self.view.init_view, state=self.state)
         self.ovr_ctrl = SignalOverviewController(view=self.view.overview_view, state=self.state)
+        self.ada_ctrl = AdaController(view=self.view.ada_view, state=self.state)
 
         # Disable downstream tabs initially
         self.view.set_tab_enabled(1, False)
+        self.view.set_tab_enabled(2, False)
 
         self._connect_signals()
 
@@ -30,9 +33,11 @@ class MainController:
 
         # 1. Enable Overview Tab
         self.view.set_tab_enabled(1, True)
+        self.view.set_tab_enabled(2, True)
 
         # 2. Tell downstream controller to refresh its view using the new AppState
         self.ovr_ctrl.update_view_from_state()
+        self.ada_ctrl.update_view_from_state()
 
         # 3. Focus the Overview tab
         self.view.set_active_tab(1)

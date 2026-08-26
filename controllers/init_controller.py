@@ -58,7 +58,7 @@ class InitController:
 
         tgt_config = p["tgt_config"]
 
-        self.state.input_sigs, self.state.rx_sigs, self.state.antenna = sim_case_0(tgt_config=tgt_config,
+        self.state.input_sigs, self.state.rx_sigs, self.state.antenna, self.state.adc_inst, self.state.adc_sigs = sim_case_0(tgt_config=tgt_config,
                                                                     tgt_on=p["tgt_on"],
                                                                     num_jammers=p["num_jammers"],
                                                                     tgt_SNR=3,

@@ -10,6 +10,7 @@ from core.dsp.signal_generators.sig_gen_new import SignalGenerator
 from core.dsp.datatypes import PulsedSignalConfig, TimeGate, TimeGrid
 from core.dsp.signal_generators.signal_providers.FM import LFMConfig
 from core.dsp.signal_generators.signal_providers.Noise import NoiseConfig
+from core.dsp.analog_to_digital.adc import ADC
 from typing import Any
 def random_exclusive_float(range1, range2):
     """
@@ -41,7 +42,7 @@ def sim_case_0(tgt_config: Any = LFMConfig,
                            max_gate_range_jammer: list[float] = [1.0, 1.0],
                            disconnected_elements:list[int] = [],
                            TIMEIT: bool = False,
-                           ) -> tuple[list[Signal], list[Signal], ULA]:
+                           ):
     ## Simulation config
     # antenna
     num_elements = num_antenna_elements
@@ -154,4 +155,8 @@ def sim_case_0(tgt_config: Any = LFMConfig,
         stop_time = time.time()
         print(f"\nSignal receiving time: {stop_time - start_time}\n")
 
-    return input_sigs, rx_sigs, antenna
+    adc = ADC(ktb_db_int16=15, bits=14)
+    adc_sigs = adc.process(rx_sigs, ktb_var=antenna.ktb_var)
+
+
+    return input_sigs, rx_sigs, antenna, adc, adc_sigs

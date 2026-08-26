@@ -9,10 +9,11 @@ from views.windows.run_window_as_app import create_app
 from views.windows.init_view.init_view import init_view
 from views.windows.SignalAnalyzer.Overview import overview
 from views.windows.MainView import MainView
+from views.windows.AdaptiveFilter.ada_overview import ada_overview
 
 from controllers.MainController import MainController
 from controllers.init_controller import InitController
-from controllers.ada_controller import AdaController
+from controllers.AdaController import AdaController
 from controllers.overview_controller import SignalOverviewController
 from controllers.AppState import AppState
 import sys
@@ -24,7 +25,8 @@ def main():
 
     ini_v = init_view()
     ovr_v = overview()
-    main_v = MainView(init_view=ini_v, overview_view=ovr_v)
+    alg_v = ada_overview()
+    main_v = MainView(init_view=ini_v, overview_view=ovr_v, ada_view=alg_v)
 
     main_ctrl = MainController(view=main_v, state=state)
 
