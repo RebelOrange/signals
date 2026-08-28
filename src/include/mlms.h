@@ -20,3 +20,19 @@ typedef ap_ufixed<32, 32> accum;
 typedef ap_ufixed<33, 1> rem;
 
 #endif //MLMS_MLMS_H
+
+/*
+
+// RFNoC SC16 types
+// **16 bit integer
+// **round to zero 
+// **saturate bit overflow
+typedef ap_fixed<16,16,AP_RND_ZERO,AP_SAT> int16;
+typedef std::complex<int16> sc16;
+
+// RFNoC Payload axis interface
+// ** packets are sc16
+// ** helper reference type for readability
+typedef hls::axis<sc16,0,0,0> axis_packet;
+typedef hls::stream<axis_packet>& axis_stream;
+*/
