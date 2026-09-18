@@ -1,0 +1,66 @@
+schema: rfnoc_modtool_args
+module_name: ada_filt
+rfnoc_version: "1.0"
+chdr_width: 64
+noc_id: 0x341A0B10
+
+parameters:
+  IN_PORTS: 8
+
+clocks:
+  - name: rfnoc_chdr
+    freq: "[]"
+  - name: rfnoc_ctrl
+    freq: "[]"
+  - name: radio
+    freq: "[]"
+
+control:
+  sw_iface: nocscript
+  fpga_iface: ctrlport
+  interface_direction: slave
+  fifo_depth: 32
+  clk_domain: axis_data
+  ctrlport:
+    byte_mode: False
+    timed: False
+    has_status: False
+
+data:
+  fpga_iface: axis_data
+  clk_domain: radio
+  inputs:
+    in:
+      num_ports: IN_PORTS
+      item_width: 32
+      nipc: 1
+      info_fifo_depth: 2
+      payload_fifo_depth: 32
+      format: sc16
+      mdata_sig: ~
+  outputs:
+    out_0:
+      num_ports: 1
+      item_width: 32
+      nipc: 1
+      info_fifo_depth: 2
+      payload_fifo_depth: 32
+      format: sc16
+      mdata_sig: ~
+    out_1:
+      num_ports: 7
+      item_width: 32
+      nipc: 1
+      info_fifo_depth: 2
+      payload_fifo_depth: 32
+      format: sc16
+      mdata_sig: ~
+
+fpga_includes:
+  - include: "fpga/ada_filt/rfnoc_block_ada_filt/Makefile.srcs"
+    make_var: "$(RFNOC_BLOCK_ADA_FILT_SRCS)"
+  - include: "fpga/ada_filt/hls-srcs/Makefile.srcs"
+    make_var: "$(RFNOC_BLOCK_HLS_SRCS)"
+  - include: "fpga/ada_filt/ver-srcs/Makefile.srcs"
+    make_var: "$(RFNOC_BLOCK_VER_SRCS)"
+
