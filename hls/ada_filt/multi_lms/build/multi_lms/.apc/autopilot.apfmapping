@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<autopilotfilemapping:AutoPilotFileMapping xmlns:autopilotfilemapping="www.autoesl.com/autopilotfilemapping">
+  <source>
+    <originFiles name="mlms.h" path="/opt/rfdev-envs/hls/ada_filt/multi_lms/src/include/mlms.h"/>
+    <originFiles name="mlms.cpp" path="/opt/rfdev-envs/hls/ada_filt/multi_lms/src/lib/mlms.cpp"/>
+  </source>
+  <testbench>
+    <originFiles name="tb_helper.h" path="/opt/rfdev-envs/hls/ada_filt/multi_lms/src/include/tb_helper.h"/>
+    <originFiles name="mlms_tb.cpp" path="/opt/rfdev-envs/hls/ada_filt/multi_lms/src/lib/mlms_tb.cpp"/>
+  </testbench>
+</autopilotfilemapping:AutoPilotFileMapping>
