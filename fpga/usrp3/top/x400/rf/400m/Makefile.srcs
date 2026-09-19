@@ -1,0 +1,17 @@
+#
+# Copyright 2021 Ettus Research, a National Instruments Brand
+#
+# SPDX-License-Identifier: LGPL-3.0-or-later
+#
+
+RF_400M_SRCS = $(abspath $(addprefix $(BASE_DIR)/../top/x400/rf/, \
+common/adc_gearbox_2x4.vhd \
+400m/adc_gearbox_8x4.v \
+400m/dac_gearbox_12x8.vhd \
+common/dac_gearbox_4x2.v \
+common/dac_gearbox_6x12.vhd \
+400m/dac_gearbox_6x8.vhd \
+400m/ddc_400m_saturate.vhd \
+400m/duc_400m_saturate.vhd \
+400m/rf_core_400m.v \
+))

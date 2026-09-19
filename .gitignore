@@ -16,3 +16,6 @@ solution1_data.json
 
 #ignore vscode files
 _ide/
+
+# ignore build directories for custom isntalls
+workarea/

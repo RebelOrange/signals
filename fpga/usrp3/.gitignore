@@ -1,0 +1,9 @@
+xsim_proj
+modelsim_proj
+.ip_user_files
+.Xil
+xsim.dir
+work/
+xvlog.*
+*simgen.tcl
+*.log
