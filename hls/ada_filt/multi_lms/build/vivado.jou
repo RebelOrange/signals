@@ -1,0 +1,24 @@
+#-----------------------------------------------------------
+# Vivado v2024.2 (64-bit)
+# SW Build 5239630 on Fri Nov 08 22:34:34 MST 2024
+# IP Build 5239520 on Sun Nov 10 16:12:51 MST 2024
+# SharedData Build 5239561 on Fri Nov 08 14:39:27 MST 2024
+# Start of session at: Fri Oct  2 20:34:02 2026
+# Process ID         : 22909
+# Current directory  : /opt/rfdev-envs/hls/ada_filt/multi_lms/build
+# Command line       : vivado
+# Log file           : /opt/rfdev-envs/hls/ada_filt/multi_lms/build/vivado.log
+# Journal file       : /opt/rfdev-envs/hls/ada_filt/multi_lms/build/vivado.jou
+# Running On         : DESKTOP-GG54J6L
+# Platform           : Ubuntu
+# Operating System   : Ubuntu 24.04.5 LTS
+# Processor Detail   : AMD Ryzen 7 3800X 8-Core Processor
+# CPU Frequency      : 3892.709 MHz
+# CPU Physical cores : 3
+# CPU Logical cores  : 6
+# Host memory        : 32869 MB
+# Swap memory        : 33554 MB
+# Total Virtual      : 66423 MB
+# Available Virtual  : 62357 MB
+#-----------------------------------------------------------
+start_gui

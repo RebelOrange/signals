@@ -22,11 +22,13 @@ import sys
 def main():
     app = create_app()
     state = AppState()
+    state.iq_data_path = "/opt/rfdev-envs/sim_data/signals_app/"
 
     ini_v = init_view()
     ovr_v = overview()
     alg_v = ada_overview()
-    main_v = MainView(init_view=ini_v, overview_view=ovr_v, ada_view=alg_v)
+    vitis_v = ada_overview()
+    main_v = MainView(init_view=ini_v, overview_view=ovr_v, ada_view=alg_v, vitis_view=vitis_v)
 
     main_ctrl = MainController(view=main_v, state=state)
 

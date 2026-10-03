@@ -7,7 +7,6 @@ from core.dsp.signal_generators.sig_gen_new import SignalGenerator
 from core.dsp.signal_analyzer.signal_analyzer import SignalAnalyzer
 
 import numpy as np
-from .AppState import AppState
 from typing import Optional
 from itertools import chain
 

@@ -69,6 +69,7 @@ typedef ap_ufixed<64,32> inner_prod;
 void multi_lms_module(axis_stream d_in,
                       axis_stream_multi X_in[NUM_X_IN_CHAN],
                       axis_stream output,
-                     ap_ufixed<32,0,AP_TRN, AP_SAT> mu_in);
+                     ap_ufixed<32,0,AP_TRN, AP_SAT> mu_in,
+                    weight_cplx (&w_out)[NUM_WEIGHTS]);
 
 #endif

@@ -288,7 +288,7 @@ if __name__ == "__main__":
     gamma = calculate_leaky_gamma(noise_bits=4, jnr_min_db=0, margin_db=0)
     #gamma = 0
     print(f"Using leaky lms gamma {gamma}")
-    mu = 0.99
+    mu = 0.9999
     ################### controller preprocessing steps? #################
     # extract canceller algorithm channels, and do some stats
     X = adc.X_dig[1:,:]
