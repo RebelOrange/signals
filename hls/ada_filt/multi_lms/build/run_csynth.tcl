@@ -10,8 +10,8 @@ set_top multi_lms_module
 
 open_solution -reset solution1
 set_part {xczu7ev-ffvc1156-2-e}
-create_clock -period 5
-set_clock_uncertainty 0.8
+create_clock -period 3.3333ns
+set_clock_uncertainty 10%
 
 config_schedule -relax_ii_for_timing=true -effort high
 

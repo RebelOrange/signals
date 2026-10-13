@@ -2,7 +2,7 @@
 
 `timescale 1 ns / 1 ps
 
- module multi_lms_module_mul_64s_16s_80_2_1(clk,ce,reset,din0, din1, dout);
+ module multi_lms_module_mul_64s_16s_64_5_1(clk,ce,reset,din0, din1, dout);
 parameter ID = 1;
 parameter NUM_STAGE = 0;
 parameter din0_WIDTH = 14;
@@ -23,6 +23,14 @@ wire signed [dout_WIDTH - 1 : 0] tmp_product;
 reg signed [dout_WIDTH - 1 : 0] buff0;
 
 
+reg [din0_WIDTH - 1 :0] din0_reg;
+reg [din1_WIDTH - 1 :0] din1_reg;
+
+
+reg signed [dout_WIDTH - 1 : 0] buff1;
+
+
+reg signed [dout_WIDTH - 1 : 0] buff2;
 
 
 
@@ -47,9 +55,8 @@ reg signed [dout_WIDTH - 1 : 0] buff0;
 
 
 
-assign tmp_product = $signed(din0) * $signed(din1);
 
-
+assign tmp_product = $signed(din0_reg) * $signed(din1_reg);
 
 
 
@@ -59,7 +66,14 @@ begin
     if (ce) begin
         buff0 <= tmp_product;
 
+        din0_reg <= din0;
+        din1_reg <= din1;
 
+
+        buff1 <= buff0;
+
+
+        buff2 <= buff1;
 
 
 
@@ -83,10 +97,10 @@ end
 
 
 
-assign dout = buff0;
 
 
 
+assign dout = buff2;
 
 
 

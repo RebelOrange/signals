@@ -4,7 +4,7 @@ use IEEE.std_logic_1164.all;
 use IEEE.numeric_std.all;
 
 
-entity multi_lms_module_mul_80s_32ns_96_2_1 is
+entity multi_lms_module_mul_64s_16s_64_5_1 is
 generic (
     ID : INTEGER := 1;
     NUM_STAGE : INTEGER := 0;
@@ -24,7 +24,7 @@ port (
 
 end entity;
 
-architecture behav of multi_lms_module_mul_80s_32ns_96_2_1 is
+architecture behav of multi_lms_module_mul_64s_16s_64_5_1 is
     signal tmp_product : std_logic_vector(dout_WIDTH - 1 downto 0);
     signal a_i : std_logic_vector(din0_WIDTH - 1 downto 0);
     signal b_i : std_logic_vector(din1_WIDTH - 1 downto 0);
@@ -32,7 +32,14 @@ architecture behav of multi_lms_module_mul_80s_32ns_96_2_1 is
     signal buff0 : std_logic_vector(dout_WIDTH - 1 downto 0);
     
     
+    signal a_reg : std_logic_vector(din0_WIDTH - 1 downto 0);
+    signal b_reg : std_logic_vector(din1_WIDTH - 1 downto 0);
     
+    
+    signal buff1 : std_logic_vector(dout_WIDTH - 1 downto 0);
+    
+    
+    signal buff2 : std_logic_vector(dout_WIDTH - 1 downto 0);
     
     
     
@@ -58,7 +65,10 @@ begin
 
 
 
-    tmp_product <= std_logic_vector(resize(unsigned(std_logic_vector(signed(a_i) * signed('0' & b_i))), dout_WIDTH));
+
+
+
+    tmp_product <= std_logic_vector(resize(unsigned(std_logic_vector(signed(a_reg) * signed(b_reg))), dout_WIDTH));
 
 
 
@@ -67,10 +77,7 @@ begin
 
 
 
-    dout <= buff0;
-
-
-
+    dout <= buff2;
 
 
 
@@ -96,7 +103,14 @@ begin
             if (ce = '1') then
                 buff0 <= tmp_product;
 
+                a_reg <= a_i;
+                b_reg <= b_i;
 
+
+                buff1 <= buff0;
+
+
+                buff2 <= buff1;
 
 
 

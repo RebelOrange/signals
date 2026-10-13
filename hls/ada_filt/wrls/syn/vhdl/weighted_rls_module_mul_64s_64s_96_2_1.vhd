@@ -4,7 +4,7 @@ use IEEE.std_logic_1164.all;
 use IEEE.numeric_std.all;
 
 
-entity multi_lms_module_mul_64s_16s_64_2_1 is
+entity weighted_rls_module_mul_64s_64s_96_2_1 is
 generic (
     ID : INTEGER := 1;
     NUM_STAGE : INTEGER := 0;
@@ -24,7 +24,7 @@ port (
 
 end entity;
 
-architecture behav of multi_lms_module_mul_64s_16s_64_2_1 is
+architecture behav of weighted_rls_module_mul_64s_64s_96_2_1 is
     signal tmp_product : std_logic_vector(dout_WIDTH - 1 downto 0);
     signal a_i : std_logic_vector(din0_WIDTH - 1 downto 0);
     signal b_i : std_logic_vector(din1_WIDTH - 1 downto 0);

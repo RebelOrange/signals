@@ -2,7 +2,7 @@
 
 `timescale 1 ns / 1 ps
 
- module multi_lms_module_mul_80s_32ns_96_2_1(clk,ce,reset,din0, din1, dout);
+ module weighted_rls_module_mul_64s_64s_96_2_1(clk,ce,reset,din0, din1, dout);
 parameter ID = 1;
 parameter NUM_STAGE = 0;
 parameter din0_WIDTH = 14;
@@ -46,8 +46,8 @@ reg signed [dout_WIDTH - 1 : 0] buff0;
 
 
 
-assign tmp_product = $signed(din0) * $signed({1'b0, din1});
 
+assign tmp_product = $signed(din0) * $signed(din1);
 
 
 

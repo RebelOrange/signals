@@ -2,16 +2,12 @@
 
 `timescale 1 ns / 1 ps
 
- module multi_lms_module_mul_64s_16s_64_2_1(clk,ce,reset,din0, din1, dout);
+ module weighted_rls_module_mul_32ns_48s_80_1_1(din0, din1, dout);
 parameter ID = 1;
 parameter NUM_STAGE = 0;
 parameter din0_WIDTH = 14;
 parameter din1_WIDTH = 12;
 parameter dout_WIDTH = 26;
-
-input clk;
-input ce;
-input reset;
 
 input [din0_WIDTH - 1 : 0] din0; 
 input [din1_WIDTH - 1 : 0] din1; 
@@ -20,7 +16,6 @@ output [dout_WIDTH - 1 : 0] dout;
 wire signed [dout_WIDTH - 1 : 0] tmp_product;
 
 
-reg signed [dout_WIDTH - 1 : 0] buff0;
 
 
 
@@ -44,20 +39,7 @@ reg signed [dout_WIDTH - 1 : 0] buff0;
 
 
 
-
-
-
-assign tmp_product = $signed(din0) * $signed(din1);
-
-
-
-
-
-
-always @(posedge clk)
-begin
-    if (ce) begin
-        buff0 <= tmp_product;
+assign tmp_product = $signed({1'b0, din0}) * $signed(din1);
 
 
 
@@ -68,22 +50,8 @@ begin
 
 
 
+assign dout = tmp_product;
 
-
-
-
-
-
-
-
-
-    end
-end
-
-
-
-
-assign dout = buff0;
 
 
 
