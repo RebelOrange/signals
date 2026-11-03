@@ -25,6 +25,8 @@ from core.dsp.signal_generators.signal_providers.CW import CwConfig
 from core.dsp.signal_generators.signal_providers.FM import LFMConfig
 from core.dsp.signal_generators.signal_providers.PSK import BPSKConfig, CodeConstructer
 
+from core.dsp.algorithms.canceller_algorithms.providers.LMS import LmsConfig
+
 from .ConfigDialog import DynamicConfigDialog
 
 class init_view(QWidget):
@@ -32,6 +34,10 @@ class init_view(QWidget):
         "CW": CwConfig,
         "LFM": LFMConfig,
         "BPSK": BPSKConfig,
+    }
+
+    ALG_MAP = {
+        "LMS": LmsConfig,
     }
 
     simulation_requested = pyqtSignal(dict)
@@ -46,6 +52,7 @@ class init_view(QWidget):
         self.canvas: FigureCanvas
         self._init_ui()
         self.active_config = None
+        self.active_alg_config = None
 
     def _init_ui(self):
         self.setLayout(self._layout())
@@ -112,6 +119,10 @@ class init_view(QWidget):
         self.btn_configure = QPushButton("Configure Signal")
         self.btn_configure.clicked.connect(self._open_config_dialog)
 
+
+        self.alg_configure = QPushButton("Configure Algorithm")
+        self.alg_configure.clicked.connect(self._open_alg_config_dialog)
+
         self.tgt_gate = QLineEdit("0.4, 0.6")
         self.tgt_gate.setPlaceholderText("Comma-separated Gate (Gate Fraction)")
 
@@ -119,6 +130,7 @@ class init_view(QWidget):
         form_target.addRow("Target On:", self.chk_tgt_on)
         form_target.addRow("Signal Type:", self.tgt_sig_type)
         form_target.addRow("", self.btn_configure)
+        form_target.addRow("", self.alg_configure)
         form_target.addRow("Fractional Gate:", self.tgt_gate)
         grp_target.setLayout(form_target)
 
@@ -188,6 +200,19 @@ class init_view(QWidget):
             self.active_config = dialog.created_config
             print(f"Successfully created {selected_key} Config object:")
             print(self.active_config)
+
+    def _open_alg_config_dialog(self):
+        selected_key = "LMS"
+        config_cls = self.ALG_MAP[selected_key]
+
+        # Reuse current config if it matches the selected type
+        current = self.active_alg_config if isinstance(self.active_alg_config, config_cls) else None
+
+        dialog = DynamicConfigDialog(config_cls, current_config=current, parent=self)
+        if dialog.exec_():
+            self.active_alg_config = dialog.created_config
+            print(f"Successfully created {selected_key} Config object:")
+            print(self.active_alg_config)
 
     def _init_plot_layout(self, layout:QVBoxLayout):
         mosaic_layout = [["spatial_plot", "."],

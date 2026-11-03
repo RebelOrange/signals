@@ -2,6 +2,14 @@ import numpy as np
 from fxpmath import Fxp
 
 DEFAULT_MARKER = object()
+HANDLED_FUNCTIONS = {}
+
+def implements(numpy_function):
+    """Decorator to register custom fixed-point overrides for NumPy functions."""
+    def decorator(func):
+        HANDLED_FUNCTIONS[numpy_function] = func
+        return func
+    return decorator
 
 
 class ap_fixed:
@@ -29,11 +37,9 @@ class ap_fixed:
             W, I, val, mode, overflow, template
         )
         self.F = self.W - self.I
-        # Preserve original unquantized source data for fluid .typedef() chaining
         self._orig_val = val_data
         self._update_val(val_data)
 
-    @staticmethod
     @staticmethod
     def _parse_args(W, I, val, mode, overflow, template):
         if template is not None:
@@ -55,10 +61,15 @@ class ap_fixed:
         raw_val = val.to_float() if isinstance(val, ap_fixed) else val
         val_arr = np.asarray(raw_val, dtype=np.float64)
 
+        if val_arr.size == 0:
+            self._empty_shape = val_arr.shape
+            self._fxp = Fxp(0.0, signed=True, n_word=self.W, n_frac=self.F, overflow='wrap', rounding='bit_trunc')
+            return
+
+        self._empty_shape = None
         fxp_round = self.QUANT_MAP.get(self.mode, 'bit_trunc')
         fxp_overflow = self.OVERFLOW_MAP.get(self.overflow, 'wrap')
 
-        # Handle Standard vs Custom Overflow Modes
         if fxp_overflow in ('wrap', 'saturate'):
             self._fxp = Fxp(
                 val=val_arr,
@@ -69,26 +80,19 @@ class ap_fixed:
                 rounding=fxp_round
             )
         else:
-            # First quantize using standard Fxp without clipping
             temp_fxp = Fxp(val=val_arr, signed=True, n_word=self.W, n_frac=self.F, overflow='wrap', rounding=fxp_round)
             quantized_val = temp_fxp.get_val()
 
-            # Dynamic bounds
             max_val = (2 ** (self.I - 1)) - (2 ** (-self.F))
             min_val = -(2 ** (self.I - 1))
 
             if self.overflow == 'AP_SAT_ZERO':
-                # Force to 0.0 on overflow or underflow
                 mask_overflow = (quantized_val > max_val) | (quantized_val < min_val)
                 quantized_val = np.where(mask_overflow, 0.0, quantized_val)
-
             elif self.overflow == 'AP_SAT_SYM':
-                # Symmetrical saturation: clip to [-MAX, +MAX]
                 sym_min = -max_val
                 quantized_val = np.clip(quantized_val, sym_min, max_val)
-
             elif self.overflow == 'AP_WRAP_SM':
-                # Sign-magnitude wraparound
                 sign = np.sign(quantized_val)
                 abs_val = np.abs(quantized_val)
                 scale = 2 ** self.F
@@ -99,6 +103,20 @@ class ap_fixed:
 
             self._fxp = Fxp(val=quantized_val, signed=True, n_word=self.W, n_frac=self.F, overflow='wrap',
                             rounding='bit_trunc')
+
+    def __getitem__(self, key) -> 'ap_fixed':
+        val_slice = self.to_float()[key]
+        return ap_fixed(template=self, val=val_slice)
+
+    def flatten(self, order='F') -> 'ap_fixed':
+        flat_val = self.to_float().flatten(order=order)
+        return ap_fixed(template=self, val=flat_val)
+
+    def __setitem__(self, key, value):
+        val_to_set = value.to_float() if isinstance(value, ap_fixed) else np.asarray(value)
+        curr_arr = np.array(self.to_float(), copy=True)
+        curr_arr[key] = val_to_set
+        self._update_val(curr_arr)
 
     def assign(self, val) -> 'ap_fixed':
         self._orig_val = val
@@ -111,7 +129,6 @@ class ap_fixed:
         return self
 
     def typedef(self, type_template) -> 'ap_fixed':
-        """Fluid method: ap_fixed(matrix).typedef(a_t)"""
         src = self._orig_val if hasattr(self, '_orig_val') and self._orig_val is not DEFAULT_MARKER else self.to_float()
         return ap_fixed(template=type_template, val=src)
 
@@ -133,17 +150,25 @@ class ap_fixed:
         return res
 
     def to_float(self) -> np.ndarray:
+        if getattr(self, '_empty_shape', None) is not None:
+            return np.empty(self._empty_shape, dtype=np.float64)
         return self._fxp.get_val()
 
     def raw(self) -> np.ndarray:
+        if getattr(self, '_empty_shape', None) is not None:
+            return np.empty(self._empty_shape, dtype=np.int64)
         return self._fxp.raw()
 
     @property
     def shape(self):
+        if getattr(self, '_empty_shape', None) is not None:
+            return self._empty_shape
         return self._fxp.val.shape if isinstance(self._fxp.val, np.ndarray) else ()
 
     # --- Matrix Multiplication (@) ---
     def __matmul__(self, other) -> 'ap_fixed':
+        if hasattr(other, 'to_complex') or np.iscomplexobj(other):
+            return NotImplemented
         if not isinstance(other, ap_fixed):
             other = ap_fixed(self.W, self.I, other, self.mode, self.overflow)
 
@@ -157,11 +182,43 @@ class ap_fixed:
         return ap_fixed(new_W, new_I, res_float, mode=self.mode, overflow=self.overflow)
 
     def __rmatmul__(self, other) -> 'ap_fixed':
+        if hasattr(other, 'to_complex') or np.iscomplexobj(other):
+            return NotImplemented
         other_obj = ap_fixed(self.W, self.I, other, self.mode, self.overflow)
         return other_obj @ self
 
+    def __truediv__(self, other) -> 'ap_fixed':
+        if hasattr(other, 'to_complex') or np.iscomplexobj(other):
+            return NotImplemented
+        if isinstance(other, ap_fixed):
+            other_val = other.to_float()
+            other_I, other_F = other.I, other.F
+        else:
+            other_val = np.asarray(other, dtype=np.float64)
+            other_I, other_F = self.I, self.F
+
+        new_I = self.I + other_F
+        new_F = self.F + other_I
+        new_W = new_I + new_F
+
+        res_val = self.to_float() / other_val
+        return ap_fixed(new_W, new_I, res_val, mode=self.mode, overflow=self.overflow)
+
+    def __rtruediv__(self, other) -> 'ap_fixed':
+        if hasattr(other, 'to_complex') or np.iscomplexobj(other):
+            return NotImplemented
+        other_obj = ap_fixed(template=self, val=other)
+        return other_obj / self
+
+    def __itruediv__(self, other) -> 'ap_fixed':
+        res = self / other
+        self.assign(res.to_float())
+        return self
+
     # --- Elementwise Arithmetic ---
     def __add__(self, other) -> 'ap_fixed':
+        if hasattr(other, 'to_complex') or np.iscomplexobj(other):
+            return NotImplemented
         other_obj = other if isinstance(other, ap_fixed) else ap_fixed(self.W, self.I, other, self.mode, self.overflow)
         new_I = max(self.I, other_obj.I) + 1
         new_F = max(self.F, other_obj.F)
@@ -172,6 +229,8 @@ class ap_fixed:
         return self.__add__(other)
 
     def __sub__(self, other) -> 'ap_fixed':
+        if hasattr(other, 'to_complex') or np.iscomplexobj(other):
+            return NotImplemented
         other_obj = other if isinstance(other, ap_fixed) else ap_fixed(self.W, self.I, other, self.mode, self.overflow)
         new_I = max(self.I, other_obj.I) + 1
         new_F = max(self.F, other_obj.F)
@@ -179,10 +238,14 @@ class ap_fixed:
         return ap_fixed(new_W, new_I, self.to_float() - other_obj.to_float(), mode=self.mode, overflow=self.overflow)
 
     def __rsub__(self, other) -> 'ap_fixed':
+        if hasattr(other, 'to_complex') or np.iscomplexobj(other):
+            return NotImplemented
         other_obj = ap_fixed(self.W, self.I, other, self.mode, self.overflow)
         return other_obj - self
 
     def __mul__(self, other) -> 'ap_fixed':
+        if hasattr(other, 'to_complex') or np.iscomplexobj(other):
+            return NotImplemented
         other_obj = other if isinstance(other, ap_fixed) else ap_fixed(self.W, self.I, other, self.mode, self.overflow)
         new_W = self.W + other_obj.W
         new_I = self.I + other_obj.I
@@ -191,8 +254,45 @@ class ap_fixed:
     def __rmul__(self, other) -> 'ap_fixed':
         return self.__mul__(other)
 
+    def __neg__(self) -> 'ap_fixed':
+        return ap_fixed(self.W, self.I, -self.to_float(), mode=self.mode, overflow=self.overflow)
+
+    def __pos__(self) -> 'ap_fixed':
+        return self
+
     def __repr__(self):
         return f"ap_fixed<{self.W},{self.I},{self.mode},{self.overflow}>\n{self.to_float()}"
+
+    def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
+        if method != '__call__':
+            return NotImplemented
+        raw_args = tuple(x.to_float() if isinstance(x, ap_fixed) else x for x in inputs)
+        result = ufunc(*raw_args, **kwargs)
+        if isinstance(result, np.ndarray):
+            return ap_fixed(template=self, val=result)
+        return result
+
+    def __array_function__(self, func, types, args, kwargs):
+        if func in HANDLED_FUNCTIONS:
+            return HANDLED_FUNCTIONS[func](*args, **kwargs)
+        raw_args = tuple(a.to_float() if isinstance(a, ap_fixed) else a for a in args)
+        res = func(*raw_args, **kwargs)
+        if isinstance(res, np.ndarray):
+            return ap_fixed(template=self, val=res)
+        return res
+
+
+@implements(np.vdot)
+def vdot(a, b):
+    a_cplx = a if hasattr(a, 'conj') else np.asarray(a)
+    b_cplx = b if hasattr(b, 'to_float') else np.asarray(b)
+    res = (a_cplx.conj() * b_cplx).sum()
+    return res
+
+@implements(np.abs)
+def abs_fixed(x):
+    val = np.abs(x.to_float() if hasattr(x, 'to_float') else x)
+    return ap_fixed(template=x if hasattr(x, 'W') else None, val=val)
 
 
 class ap_complex:
@@ -205,6 +305,26 @@ class ap_complex:
 
         self.real = ap_fixed(self.W, self.I, val_arr.real, mode=self.mode, overflow=self.overflow)
         self.imag = ap_fixed(self.W, self.I, val_arr.imag, mode=self.mode, overflow=self.overflow)
+
+    def __getitem__(self, key) -> 'ap_complex':
+        val_slice = self.to_complex()[key]
+        return ap_complex(template=self, val=val_slice)
+
+    def flatten(self, order='F') -> 'ap_complex':
+        flat_val = self.to_complex().flatten(order=order)
+        return ap_complex(template=self, val=flat_val)
+
+    def __setitem__(self, key, value):
+        if isinstance(value, ap_complex):
+            val_complex = value.to_complex()
+        elif isinstance(value, ap_fixed):
+            val_complex = value.to_float().astype(np.complex128)
+        else:
+            val_complex = np.asarray(value, dtype=np.complex128)
+
+        curr_arr = np.array(self.to_complex(), copy=True)
+        curr_arr[key] = val_complex
+        self._update_val(curr_arr)
 
     def to_complex(self) -> np.ndarray:
         return self.real.to_float() + 1j * self.imag.to_float()
@@ -248,58 +368,169 @@ class ap_complex:
             return out
         return res
 
+    def conj(self) -> 'ap_complex':
+        r = np.real(self.to_complex())
+        im = np.imag(self.to_complex())
+        return ap_complex(template=self, val=r - 1j * im)
+
+    def conjugate(self) -> 'ap_complex':
+        return self.conj()
+
+    @property
+    def T(self) -> 'ap_complex':
+        return ap_complex(template=self, val=self.to_complex().T)
+
     @property
     def shape(self):
         return self.real.shape
 
-    # --- Complex Matrix Multiplication (@) ---
-    def __matmul__(self, other) -> 'ap_complex':
-        if not isinstance(other, ap_complex):
-            other = ap_complex(self.W, self.I, other, self.mode, self.overflow)
-
-        K = self.shape[-1] if len(self.shape) > 0 else 1
-        accum_bits = (int(np.ceil(np.log2(K))) if K > 1 else 0) + 1
-
-        new_I = self.I + other.I + accum_bits
-        new_W = self.W + other.W + accum_bits
-
-        res_complex = self.to_complex() @ other.to_complex()
-        return ap_complex(new_W, new_I, res_complex, mode=self.mode, overflow=self.overflow)
-
-    def __rmatmul__(self, other) -> 'ap_complex':
-        other_obj = ap_complex(self.W, self.I, other, self.mode, self.overflow)
-        return other_obj @ self
-
-    # --- Elementwise Arithmetic ---
+    # --- Complex Matrix Multiplication & Arithmetic ---
     def __add__(self, other) -> 'ap_complex':
-        other_obj = other if isinstance(other, ap_complex) else ap_complex(self.W, self.I, other, self.mode, self.overflow)
-        new_I = max(self.I, other_obj.I) + 1
-        new_F = max(self.real.F, other_obj.real.F)
-        new_W = new_I + new_F
-        return ap_complex(new_W, new_I, self.to_complex() + other_obj.to_complex(), mode=self.mode, overflow=self.overflow)
+        other_val = other.to_complex() if isinstance(other, ap_complex) else (
+            other.to_float() if isinstance(other, ap_fixed) else np.asarray(other, dtype=np.complex128))
+        other_I = getattr(other, 'I', self.I)
+        new_I = max(self.I, other_I) + 1
+        new_W = new_I + self.real.F
+        return ap_complex(new_W, new_I, self.to_complex() + other_val, mode=self.mode, overflow=self.overflow)
 
     def __radd__(self, other) -> 'ap_complex':
         return self.__add__(other)
 
     def __sub__(self, other) -> 'ap_complex':
-        other_obj = other if isinstance(other, ap_complex) else ap_complex(self.W, self.I, other, self.mode, self.overflow)
-        new_I = max(self.I, other_obj.I) + 1
-        new_F = max(self.real.F, other_obj.real.F)
-        new_W = new_I + new_F
-        return ap_complex(new_W, new_I, self.to_complex() - other_obj.to_complex(), mode=self.mode, overflow=self.overflow)
+        other_val = other.to_complex() if isinstance(other, ap_complex) else (
+            other.to_float() if isinstance(other, ap_fixed) else np.asarray(other, dtype=np.complex128))
+        other_I = getattr(other, 'I', self.I)
+        new_I = max(self.I, other_I) + 1
+        new_W = new_I + self.real.F
+        return ap_complex(new_W, new_I, self.to_complex() - other_val, mode=self.mode, overflow=self.overflow)
 
     def __rsub__(self, other) -> 'ap_complex':
-        other_obj = ap_complex(self.W, self.I, other, self.mode, self.overflow)
-        return other_obj - self
+        other_val = other.to_complex() if isinstance(other, ap_complex) else (
+            other.to_float() if isinstance(other, ap_fixed) else np.asarray(other, dtype=np.complex128))
+        other_I = getattr(other, 'I', self.I)
+        new_I = max(self.I, other_I) + 1
+        new_W = new_I + self.real.F
+        return ap_complex(new_W, new_I, other_val - self.to_complex(), mode=self.mode, overflow=self.overflow)
 
     def __mul__(self, other) -> 'ap_complex':
-        other_obj = other if isinstance(other, ap_complex) else ap_complex(self.W, self.I, other, self.mode, self.overflow)
-        new_W = self.W + other_obj.W + 1
-        new_I = self.I + other_obj.I + 1
-        return ap_complex(new_W, new_I, self.to_complex() * other_obj.to_complex(), mode=self.mode, overflow=self.overflow)
+        other_val = other.to_complex() if isinstance(other, ap_complex) else (
+            other.to_float() if isinstance(other, ap_fixed) else np.asarray(other))
+        other_W = getattr(other, 'W', self.W)
+        other_I = getattr(other, 'I', self.I)
+        new_W = self.W + other_W + 1
+        new_I = self.I + other_I + 1
+        res = self.to_complex() * other_val
+        return ap_complex(new_W, new_I, res, mode=self.mode, overflow=self.overflow)
 
     def __rmul__(self, other) -> 'ap_complex':
         return self.__mul__(other)
 
+    def __matmul__(self, other) -> 'ap_complex':
+        other_val = other.to_complex() if isinstance(other, ap_complex) else (
+            other.to_float() if isinstance(other, ap_fixed) else np.asarray(other))
+        other_W = getattr(other, 'W', self.W)
+        other_I = getattr(other, 'I', self.I)
+        K = self.to_complex().shape[-1] if len(self.to_complex().shape) > 0 else 1
+        accum_bits = (int(np.ceil(np.log2(K))) if K > 1 else 0) + 1
+        new_I = self.I + other_I + accum_bits
+        new_W = self.W + other_W + accum_bits
+        res_complex = self.to_complex() @ other_val
+        return ap_complex(new_W, new_I, res_complex, mode=self.mode, overflow=self.overflow)
+
+    def __rmatmul__(self, other) -> 'ap_complex':
+        other_obj = ap_complex(template=self, val=other)
+        return other_obj @ self
+
+    def __truediv__(self, other):
+        if isinstance(other, ap_complex):
+            other_val = other.to_complex()
+        elif isinstance(other, ap_fixed):
+            other_val = other.to_float()
+        else:
+            other_val = np.asarray(other)
+
+        res = self.to_complex() / other_val
+
+        if np.iscomplexobj(res):
+            return ap_complex(template=self, val=res)
+        return ap_fixed(self.W, self.I, res, mode=self.mode, overflow=self.overflow)
+
+    def __rtruediv__(self, other):
+        other_obj = ap_complex(template=self, val=other)
+        return other_obj / self
+
+    def __itruediv__(self, other) -> 'ap_complex':
+        res = self / other
+        self.assign(res.to_complex() if isinstance(res, ap_complex) else res.to_float())
+        return self
+
+    def __neg__(self) -> 'ap_complex':
+        return ap_complex(self.W, self.I, -self.to_complex(), mode=self.mode, overflow=self.overflow)
+
+    def __pos__(self) -> 'ap_complex':
+        return self
+
     def __repr__(self):
         return f"ap_complex<{self.W},{self.I},{self.mode},{self.overflow}>\n{self.to_complex()}"
+
+    def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
+        if method != '__call__':
+            return NotImplemented
+
+        raw_args = tuple(
+            x.to_complex() if isinstance(x, ap_complex) else
+            (x.to_float() if isinstance(x, ap_fixed) else x)
+            for x in inputs
+        )
+
+        result = ufunc(*raw_args, **kwargs)
+
+        if isinstance(result, np.ndarray):
+            if np.iscomplexobj(result):
+                return ap_complex(template=self, val=result)
+            else:
+                return ap_fixed(self.W, self.I, val=result, mode=self.mode, overflow=self.overflow)
+        return result
+
+    def __array_function__(self, func, types, args, kwargs):
+        if func in HANDLED_FUNCTIONS:
+            return HANDLED_FUNCTIONS[func](*args, **kwargs)
+
+        raw_args = tuple(
+            a.to_complex() if isinstance(a, ap_complex) else
+            (a.to_float() if isinstance(a, ap_fixed) else a)
+            for a in args
+        )
+        res = func(*raw_args, **kwargs)
+
+        if isinstance(res, np.ndarray):
+            if np.iscomplexobj(res):
+                return ap_complex(template=self, val=res)
+            return ap_fixed(self.W, self.I, val=res, mode=self.mode, overflow=self.overflow)
+        return res
+
+
+@implements(np.real)
+def real_override(x):
+    if isinstance(x, ap_complex):
+        return x.real
+    return np.real(x)
+
+@implements(np.imag)
+def imag_override(x):
+    if isinstance(x, ap_complex):
+        return x.imag
+    return np.imag(x)
+
+@implements(np.vdot)
+def vdot_override(a, b):
+    a_cplx = a if isinstance(a, ap_complex) else ap_complex(val=a)
+    b_cplx = b if isinstance(b, ap_complex) else ap_complex(val=b)
+    return np.sum(a_cplx.conj() * b_cplx)
+
+@implements(np.sum)
+def sum_override(a, axis=None, dtype=None, out=None, keepdims=False):
+    val = np.sum(a.to_complex() if isinstance(a, ap_complex) else a, axis=axis, keepdims=keepdims)
+    if np.iscomplexobj(val):
+        return ap_complex(template=a if isinstance(a, ap_complex) else None, val=val)
+    return ap_fixed(template=a if isinstance(a, ap_fixed) else None, val=val)
