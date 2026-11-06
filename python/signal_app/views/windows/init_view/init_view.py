@@ -119,10 +119,6 @@ class init_view(QWidget):
         self.btn_configure = QPushButton("Configure Signal")
         self.btn_configure.clicked.connect(self._open_config_dialog)
 
-
-        self.alg_configure = QPushButton("Configure Algorithm")
-        self.alg_configure.clicked.connect(self._open_alg_config_dialog)
-
         self.tgt_gate = QLineEdit("0.4, 0.6")
         self.tgt_gate.setPlaceholderText("Comma-separated Gate (Gate Fraction)")
 
@@ -130,7 +126,6 @@ class init_view(QWidget):
         form_target.addRow("Target On:", self.chk_tgt_on)
         form_target.addRow("Signal Type:", self.tgt_sig_type)
         form_target.addRow("", self.btn_configure)
-        form_target.addRow("", self.alg_configure)
         form_target.addRow("Fractional Gate:", self.tgt_gate)
         grp_target.setLayout(form_target)
 
@@ -167,6 +162,20 @@ class init_view(QWidget):
         form_gating.addRow("Max Gate Range:", self.txt_max_gate)
         grp_gating.setLayout(form_gating)
 
+        # --- Algorithm Selection
+        # in the future add checkbox list with individual configures
+        grp_alg = QGroupBox("Algorithm Selection")
+        form_alg = QFormLayout()
+
+        self.alg_type = QComboBox()
+        self.alg_type.addItem("LMS", userData="lms")
+        self.alg_type.addItem("RLS", userData="rls")
+        self.alg_configure = QPushButton("Configure Algorithm")
+        self.alg_configure.clicked.connect(self._open_alg_config_dialog)
+        form_alg.addRow("Algorithm Type:", self.alg_type)
+        form_alg.addRow("", self.alg_configure)
+        grp_alg.setLayout(form_alg)
+
         # --- Submit Button ---
         self.btn_run = QPushButton("Run Simulation")
         self.btn_run.clicked.connect(self._on_run_clicked)
@@ -177,6 +186,8 @@ class init_view(QWidget):
         main_layout.addWidget(grp_target)
         main_layout.addWidget(grp_jammers)
         main_layout.addWidget(grp_gating)
+        main_layout.addWidget(grp_alg)
+
         main_layout.addWidget(self.btn_preview)
         main_layout.addWidget(self.btn_run)
         main_layout.addStretch()
@@ -202,7 +213,7 @@ class init_view(QWidget):
             print(self.active_config)
 
     def _open_alg_config_dialog(self):
-        selected_key = "LMS"
+        selected_key = self.alg_type.currentText()
         config_cls = self.ALG_MAP[selected_key]
 
         # Reuse current config if it matches the selected type
